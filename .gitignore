@@ -39,9 +39,27 @@ ENV/
 reports/
 output/
 
-# Environment variables
+# Environment variables and secrets
 .env
-.env.local
+.env.*
+!.env.example
+*.env
+*.env.local
+*.env.bak
+*.env.backup
+.env.bak
+.env.backup
+# Common secret patterns
+*secret*
+*key*
+*token*
+*.pem
+*.key
+*.cert
+*.crt
+config.ini
+secrets.yaml
+secrets.yml
 
 # OS
 .DS_Store

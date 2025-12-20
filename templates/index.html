@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecurityScan - Modern Security Assessment Tool</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23667eea'/><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --bg: #05060b;
+            --bg-alt: #0b0d16;
+            --panel: #111827;
+            --accent: #ff6b6b;
+            --accent-soft: rgba(255, 107, 107, 0.18);
+            --border-soft: rgba(255, 255, 255, 0.08);
+            --text-main: #f2f3f5;
+            --text-muted: #9aa0a6;
+            --text-soft: #6b7280;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --shadow-soft: 0 24px 80px rgba(0, 0, 0, 0.65);
+            --shadow-card: 0 10px 40px rgba(0, 0, 0, 0.45);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        body {
+            background: var(--bg);
+            background-size: cover;
+            color: var(--text-main);
+            min-height: 100vh;
+            position: relative;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at top, #141825 0, #020308 60%);
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        body > * {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Header */
+        header {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-soft);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--bg-alt);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-card);
+            backdrop-filter: blur(10px);
+        }
+        
+        /* Inputs */
+        input, select, textarea {
+            background: #161923;
+            border: 1px solid var(--border-soft);
+            color: var(--text-main);
+            border-radius: 10px;
+            padding: 1rem 1.5rem !important;
+            font-size: 1rem;
+        }
+        
+        input::placeholder {
+            color: var(--text-soft);
+            opacity: 0.6;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        
+        input::placeholder {
+            color: var(--text-soft);
+        }
+        
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #c43434);
+            color: #fff;
+            border: none;
+            border-radius: 999px;
+            padding: 0.9rem 1.8rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 0 2rem rgba(255, 80, 80, 0.45);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 2.5rem rgba(255, 80, 80, 0.6);
+        }
+        
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+        
+        /* Severity badges */
+        .severity-critical {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .severity-high {
+            background: rgba(249, 115, 22, 0.2);
+            color: #fdba74;
+            border: 1px solid rgba(249, 115, 22, 0.3);
+        }
+        
+        .severity-medium {
+            background: rgba(234, 179, 8, 0.2);
+            color: #fde047;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+        
+        .severity-low {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .severity-info {
+            background: rgba(107, 114, 128, 0.2);
+            color: #d1d5db;
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+        
+        /* Progress bar */
+        .progress-bar {
+            background: linear-gradient(135deg, var(--accent), #c43434);
+            border-radius: 999px;
+            transition: width 0.3s ease;
+        }
+        
+        /* Links */
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        
+        a:hover {
+            color: #ff8e8e;
+        }
+        
+        /* Info boxes */
+        .info-box {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+        
+        .warning-box {
+            background: rgba(234, 179, 8, 0.1);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            color: #fde047;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+        
+        .success-box {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #86efac;
+            border-radius: 10px;
+            padding: 1rem;
+        }
+        
+        /* Tables */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        table th, table td {
+            border: 1px solid var(--border-soft);
+            padding: 0.75rem;
+            text-align: left;
+        }
+        
+        table th {
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text-main);
+            font-weight: 600;
+        }
+        
+        table tr:hover {
+            background: rgba(255, 255, 255, 0.05) !important;
+        }
+        
+        /* Checkboxes */
+        input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-alt);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-soft);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="px-6 py-4">
+        <div class="container mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i class="fas fa-shield-alt text-3xl" style="color: var(--accent);"></i>
+                <h1 class="text-2xl font-bold" style="color: var(--text-main);">SecurityScan</h1>
+            </div>
+            <div class="text-sm" style="color: var(--text-muted);">
+                <i class="fas fa-bug mr-2"></i>
+                Security Assessment Platform
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8 max-w-7xl">
+        <!-- Scan Configuration Card -->
+        <div class="card p-6 mb-6">
+            <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main);">
+                <i class="fas fa-cog mr-2" style="color: var(--accent);"></i>
+                New Security Scan
+            </h2>
+            
+            <form id="scanForm" class="space-y-4" onsubmit="return false;">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
+                        Target URL or Domain
+                    </label>
+                    <input 
+                        type="text" 
+                        id="targetInput" 
+                        placeholder="https://example.com"
+                        class="w-full"
+                        style="padding: 1rem 1.5rem !important;"
+                        required
+                    >
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
+                        Scan Mode
+                    </label>
+                    <select id="scanMode" class="w-full" style="padding: 1rem 1.5rem !important;">
+                        <option value="defensive">🛡️ Defensive (Reconnaissance)</option>
+                        <option value="offensive">⚔️ Offensive (Exploitation)</option>
+                        <option value="comprehensive" selected>🎯 Comprehensive (Both Defensive + Offensive)</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="flex items-start space-x-3 cursor-pointer p-3 rounded-lg hover:bg-opacity-10 hover:bg-white transition-colors" style="border: 1px solid var(--border-soft); background: rgba(255, 255, 255, 0.02);">
+                        <input type="checkbox" id="exhaustiveMode" class="mt-0.5 w-5 h-5 rounded cursor-pointer flex-shrink-0" style="accent-color: var(--accent);">
+                        <div class="flex-1">
+                            <span class="block text-sm font-medium" style="color: var(--text-main);">
+                                🔍 Exhaustive Mode
+                            </span>
+                            <span class="block text-xs mt-1" style="color: var(--text-soft);">
+                                More thorough scanning (slower, tests all payloads/parameters). Uncheck for faster standard scanning.
+                            </span>
+                        </div>
+                    </label>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
+                        Risk Level
+                    </label>
+                    <div id="defensiveInfo" class="success-box mt-2 text-sm hidden">
+                        <i class="fas fa-shield-alt mr-2"></i>
+                        Defensive mode performs safe, read-only reconnaissance. No exploitation attempts.
+                    </div>
+                    <div id="riskWarning" class="warning-box mt-2 text-sm hidden">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <span id="riskWarningText">Offensive mode will attempt to exploit vulnerabilities</span>
+                    </div>
+                    <div id="comprehensiveInfo" class="info-box mt-2 text-sm">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        Comprehensive mode runs defensive reconnaissance first, then offensive exploitation for complete assessment. Ensure you have authorization before running offensive scans.
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="email" class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
+                        <i class="fas fa-envelope mr-2"></i>Email (Optional - for completion notification)
+                    </label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        placeholder="your@email.com"
+                        class="w-full"
+                        style="padding: 1rem 1.5rem !important;"
+                    />
+                    <p class="text-xs mt-1" style="color: var(--text-soft);">
+                        Receive an email when the scan completes with a link to view results
+                    </p>
+                </div>
+                
+                <button 
+                    type="submit" 
+                    id="startScanBtn"
+                    class="btn-primary w-full py-3 px-6"
+                >
+                    <i class="fas fa-play mr-2"></i>
+                    Start Scan
+                </button>
+            </form>
+        </div>
+
+        <!-- Scan Progress -->
+        <div id="scanProgress" class="hidden card p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold" style="color: var(--text-main);">
+                    <i class="fas fa-spinner fa-spin mr-2" style="color: var(--accent);"></i>
+                    Scan in Progress
+                </h3>
+                <div class="flex items-center gap-3">
+                    <span id="scanStatus" class="text-sm" style="color: var(--text-muted);">Initializing...</span>
+                    <button 
+                        id="cancelScanBtn" 
+                        onclick="cancelScan()"
+                        class="hidden text-sm px-3 py-1 rounded-lg transition duration-200"
+                        style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3);"
+                    >
+                        <i class="fas fa-times mr-1"></i>Cancel
+                    </button>
+                </div>
+            </div>
+            <div class="w-full rounded-full h-3 mb-3" style="background: rgba(255, 255, 255, 0.1);">
+                <div id="progressBar" class="progress-bar h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+                <div>
+                    <p id="currentScanner" class="font-medium" style="color: var(--text-main);"></p>
+                    <p id="scannerProgress" class="mt-1" style="color: var(--text-muted);"></p>
+                </div>
+                <div class="text-right">
+                    <p id="elapsedTime" class="font-medium text-sm" style="color: var(--text-main);">
+                        <i class="fas fa-clock mr-1"></i>
+                        <span class="text-xs" style="color: var(--text-muted);">Elapsed: </span>
+                        <span id="elapsedTimeText">0s</span>
+                    </p>
+                    <p id="estimatedTime" class="mt-1 text-sm" style="color: var(--text-muted);">
+                        <i class="fas fa-hourglass-half mr-1"></i>
+                        <span class="text-xs" id="estimatedTimeLabel">Est. for current step: </span>
+                        <span id="estimatedTimeText">Calculating...</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div id="scanResults" class="hidden">
+            <!-- Risk Summary -->
+            <div class="card p-6 mb-6">
+                <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main);">
+                    <i class="fas fa-chart-line mr-2" style="color: var(--accent);"></i>
+                    Risk Assessment
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="text-center p-4 rounded-lg" style="background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.2);">
+                        <div id="riskScore" class="text-4xl font-bold" style="color: var(--accent);">0</div>
+                        <div class="text-sm mt-1" style="color: var(--text-muted);">Risk Score</div>
+                    </div>
+                    <div class="text-center p-4 rounded-lg" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2);">
+                        <div id="findingsCount" class="text-4xl font-bold" style="color: #93c5fd;">0</div>
+                        <div class="text-sm mt-1" style="color: var(--text-muted);">Total Findings</div>
+                    </div>
+                    <div class="text-center p-4 rounded-lg" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2);">
+                        <div id="riskLevel" class="text-4xl font-bold" style="color: #86efac;">-</div>
+                        <div class="text-sm mt-1" style="color: var(--text-muted);">Risk Level</div>
+                    </div>
+                </div>
+                
+                <!-- Visualizations -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Risk Score Gauge -->
+                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                        <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Risk Score</h3>
+                        <canvas id="riskGaugeChart" style="max-height: 200px;"></canvas>
+                    </div>
+                    
+                    <!-- Findings by Severity -->
+                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                        <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Findings by Severity</h3>
+                        <canvas id="severityChart" style="max-height: 200px;"></canvas>
+                    </div>
+                    
+                    <!-- Findings by Category -->
+                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                        <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Findings by Category</h3>
+                        <canvas id="categoryChart" style="max-height: 200px;"></canvas>
+                    </div>
+                    
+                    <!-- Scanner Activity -->
+                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                        <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Scanner Activity</h3>
+                        <canvas id="scannerChart" style="max-height: 200px;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Findings -->
+            <div class="card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-semibold" style="color: var(--text-main);">
+                        <i class="fas fa-list mr-2" style="color: var(--accent);"></i>
+                        Findings
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button id="filterAll" class="px-3 py-1 rounded text-sm btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">All</button>
+                        <button id="filterCritical" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft);">Critical</button>
+                        <button id="filterHigh" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft);">High</button>
+                        <button id="filterMedium" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft);">Medium</button>
+                    </div>
+                </div>
+                <div id="findingsList" class="space-y-4">
+                    <!-- Findings will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Information Table -->
+            <div class="card p-6 mt-6">
+                <button id="informationToggle" class="w-full flex items-center justify-between text-left mb-4 focus:outline-none transition-colors group">
+                    <h2 class="text-2xl font-semibold group-hover:transition-colors" style="color: var(--text-main);">
+                        <i class="fas fa-info-circle mr-2" style="color: var(--accent);"></i>
+                        Information
+                        <span id="informationCount" class="text-lg font-normal ml-2" style="color: var(--text-muted);"></span>
+                    </h2>
+                    <i id="informationToggleIcon" class="fas fa-chevron-down transition-transform duration-200" style="color: var(--text-muted);"></i>
+                </button>
+                <div id="informationContent" class="hidden overflow-hidden transition-all duration-300">
+                    <div id="informationTable" class="overflow-x-auto">
+                        <!-- Information table will be inserted here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Security Checks Section -->
+            <div class="card p-6 mb-6">
+                <button id="securityChecksToggle" class="w-full flex items-center justify-between text-left mb-4 focus:outline-none transition-colors group">
+                    <h2 class="text-2xl font-semibold group-hover:transition-colors" style="color: var(--text-main);">
+                        <i class="fas fa-shield-alt mr-2" style="color: var(--accent);"></i>
+                        Security Checks
+                        <span id="securityChecksCount" class="text-lg font-normal ml-2" style="color: var(--text-muted);"></span>
+                    </h2>
+                    <i id="securityChecksToggleIcon" class="fas fa-chevron-down transition-transform duration-200" style="color: var(--text-muted);"></i>
+                </button>
+                <div id="securityChecksContent" class="hidden overflow-hidden transition-all duration-300">
+                    <div id="securityChecksTable" class="overflow-x-auto">
+                        <!-- Security checks will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-4 py-2 border-t" style="border-color: var(--border-soft); background: rgba(0, 0, 0, 0.2);">
+        <div class="container mx-auto px-6 max-w-7xl">
+            <div class="text-center">
+                <p class="text-sm mb-1" style="color: var(--text-muted);">
+                    SecurityScan is part of 
+                    <a href="https://darkai.ca/" target="_blank" rel="noopener noreferrer" 
+                       style="color: var(--accent); text-decoration: none; font-weight: 600;"
+                       onmouseover="this.style.color='#ff8e8e'" 
+                       onmouseout="this.style.color='var(--accent)'">
+                        Dark AI
+                    </a>
+                </p>
+                <p class="text-xs" style="color: var(--text-soft);">
+                    Exposing AI-powered harms hidden beneath the surface of the internet.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

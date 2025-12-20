@@ -1,0 +1,26 @@
+# SecurityScan Requirements
+# Python 3.8+
+
+# Core dependencies (minimal - most functionality uses subprocess calls to external tools)
+# No heavy dependencies required for basic operation
+
+# Optional: For future enhancements
+requests>=2.31.0  # For API integrations and WordPress analyzer
+flask>=2.3.0  # Web UI framework
+flask-cors>=4.0.0  # CORS support for web UI
+dnspython>=2.4.0  # For DNS subdomain enumeration fallback
+python-whois>=0.8.0  # For WHOIS lookups
+reportlab>=4.0.0  # For PDF report generation
+python-dotenv>=1.0.0  # For loading .env file (same as DarkAI-consolidated)
+# Optional: For AI-powered analysis in PDF reports
+openai>=1.0.0  # Optional - only needed if using OPENAI_API_KEY
+boto3>=1.28.0  # Optional - only needed if using AWS Bedrock
+# Email functionality uses Resend API (same as DarkAI-consolidated) - no extra dependencies needed
+# Resend API is called via requests library (already included)
+# python-dateutil>=2.8.0  # For date parsing (if needed)
+
+# Note: This tool requires external scanners to be installed:
+# - WPScan: https://github.com/wpscanteam/wpscan
+# - Nuclei: https://github.com/projectdiscovery/nuclei
+# - Nmap: https://nmap.org/
+

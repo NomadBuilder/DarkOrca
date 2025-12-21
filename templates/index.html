@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SecurityScan - Modern Security Assessment Tool</title>
-    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23667eea'/><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <title>DarkOrca - Modern Security Assessment Tool</title>
+    <link rel="icon" type="image/png" href="/static/DarkOrca.png">
+    <link rel="alternate icon" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -40,7 +40,7 @@
         
         body {
             background: var(--bg);
-            background-size: cover;
+            background: radial-gradient(circle at top, #141825 0, #020308 60%);
             color: var(--text-main);
             min-height: 100vh;
             position: relative;
@@ -69,29 +69,38 @@
         header {
             background: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(16px);
-            border-bottom: 1px solid var(--border-soft);
+            border-bottom: none;
             position: sticky;
             top: 0;
             z-index: 1000;
+            margin-bottom: 0;
         }
         
         /* Cards */
         .card {
-            background: var(--bg-alt);
-            border: 1px solid var(--border-soft);
+            background: transparent;
+            border: none;
             border-radius: var(--radius-md);
-            box-shadow: var(--shadow-card);
-            backdrop-filter: blur(10px);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+            box-shadow: none;
+        }
+        
+        .card:hover {
+            box-shadow: none;
         }
         
         /* Inputs */
         input, select, textarea {
-            background: #161923;
-            border: 1px solid var(--border-soft);
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             color: var(--text-main);
             border-radius: 10px;
             padding: 1rem 1.5rem !important;
             font-size: 1rem;
+            transition: all 0.3s ease;
+            position: relative;
         }
         
         input::placeholder {
@@ -101,12 +110,47 @@
         
         input:focus, select:focus, textarea:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-soft);
+            border-color: rgba(0, 200, 255, 0.5);
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1);
         }
         
-        input::placeholder {
-            color: var(--text-soft);
+        /* Override browser autofill styling (white background issue) */
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus,
+        input:-webkit-autofill:active {
+            -webkit-text-fill-color: var(--text-main) !important;
+            -webkit-box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.4) inset !important;
+            box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.4) inset !important;
+            transition: background-color 5000s ease-in-out 0s;
+            background-color: rgba(0, 0, 0, 0.4) !important;
+        }
+        
+        input:-webkit-autofill:focus {
+            -webkit-box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.6) inset, 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1) !important;
+            box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.6) inset, 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1) !important;
+        }
+        
+        /* Sonar sweep on input focus */
+        input:focus::before, textarea:focus::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 200, 255, 0.3), transparent);
+            animation: sonar-sweep 0.8s ease-out;
+            pointer-events: none;
+            z-index: 1;
+            border-radius: 10px;
+        }
+        
+        @keyframes sonar-sweep {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
         }
         
         /* Buttons */
@@ -119,17 +163,34 @@
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            box-shadow: 0 0 2rem rgba(255, 80, 80, 0.45);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
         }
         
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 0 2.5rem rgba(255, 80, 80, 0.6);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+        }
+        
+        .btn-primary:hover::before {
+            left: 100%;
         }
         
         .btn-primary:active {
-            transform: scale(0.98);
+            transform: translateY(0) scale(0.98);
         }
         
         /* Severity badges */
@@ -251,28 +312,448 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.15);
         }
+        
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            /* Tablet adjustments */
+            .container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            
+            header img {
+                height: 80px !important;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            /* Mobile adjustments */
+            header {
+                padding: 0.75rem 0;
+            }
+            
+            header .logo-container img {
+                height: 70px !important;
+            }
+            
+            .card {
+                padding: 1rem !important;
+                margin-bottom: 1rem;
+            }
+            
+            h2 {
+                font-size: 1.5rem !important;
+            }
+            
+            /* Mobile navigation */
+            .mobile-menu-toggle {
+                display: block !important;
+                background: none;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: var(--text-main);
+                padding: 0.5rem 0.75rem;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1.25rem;
+                transition: all 0.2s ease;
+            }
+            
+            .mobile-menu-toggle:hover {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            
+            .desktop-nav {
+                display: none !important;
+            }
+            
+            .mobile-nav {
+                position: fixed;
+                top: 0;
+                right: -100%;
+                width: 280px;
+                height: 100vh;
+                background: rgba(10, 15, 20, 0.98);
+                backdrop-filter: blur(20px);
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 2rem 1.5rem;
+                z-index: 2000;
+                transition: right 0.3s ease;
+                overflow-y: auto;
+            }
+            
+            .mobile-nav.open {
+                right: 0;
+            }
+            
+            .mobile-nav-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 1999;
+                backdrop-filter: blur(4px);
+            }
+            
+            .mobile-nav-overlay.open {
+                display: block;
+            }
+            
+            .mobile-nav a {
+                display: block;
+                padding: 1rem;
+                margin-bottom: 0.5rem;
+                color: var(--text-main);
+                text-decoration: none;
+                border-radius: 8px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                transition: all 0.2s;
+            }
+            
+            .mobile-nav a:hover, .mobile-nav a:active {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 107, 107, 0.3);
+                color: var(--accent);
+            }
+            
+            /* Stats cards - stack on mobile */
+            .stats-grid {
+                grid-template-columns: 1fr !important;
+                gap: 0.75rem !important;
+            }
+            
+            /* Charts - full width on mobile */
+            .chart-container {
+                min-height: 250px;
+            }
+            
+            /* Form inputs - better touch targets */
+            input, select, textarea {
+                font-size: 16px !important; /* Prevents zoom on iOS */
+                padding: 0.875rem 1rem !important;
+                min-height: 44px; /* iOS touch target minimum */
+            }
+            
+            /* Buttons - larger touch targets */
+            .btn-primary {
+                padding: 1rem 1.5rem !important;
+                font-size: 1rem;
+                min-height: 48px;
+                width: 100%; /* Full width on mobile for easier tapping */
+            }
+            
+            /* Labels and form elements spacing */
+            label {
+                font-size: 0.875rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            /* Form spacing */
+            .space-y-4 > * + * {
+                margin-top: 1rem;
+            }
+            
+            /* Tables - horizontal scroll on mobile */
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            /* Findings filters - wrap on mobile */
+            .findings-filters {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-top: 0.75rem;
+            }
+            
+            .findings-filters button {
+                flex: 1 1 calc(50% - 0.25rem);
+                min-width: calc(50% - 0.25rem);
+                min-height: 44px;
+                font-size: 0.875rem;
+            }
+            
+            /* Findings header - stack on mobile */
+            .findings-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+            
+            /* Progress bar adjustments */
+            .progress-bar {
+                min-height: 8px;
+            }
+            
+            /* Scan progress card */
+            #scanProgress {
+                padding: 1rem !important;
+            }
+            
+            /* Info boxes - better readability */
+            .info-box, .warning-box, .success-box {
+                padding: 0.875rem !important;
+                font-size: 0.875rem;
+                line-height: 1.5;
+            }
+            
+            /* Finding cards - better mobile layout */
+            .finding-card,
+            [class*="severity-"] {
+                padding: 1rem !important;
+                margin-bottom: 0.75rem;
+            }
+            
+            /* Finding card headers - stack on mobile */
+            .finding-card-header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 0.5rem;
+            }
+            
+            /* Finding card content - better word wrap */
+            .finding-description,
+            .finding-evidence {
+                word-break: break-word;
+                overflow-wrap: break-word;
+            }
+            
+            /* Code blocks in findings - scrollable */
+            pre, code {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                font-size: 0.8125rem;
+            }
+        }
+        
+            @media (max-width: 640px) {
+            /* Small mobile adjustments */
+            header img {
+                height: 60px !important;
+            }
+            
+            .container {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+            
+            main {
+                padding-top: 0 !important;
+                padding-bottom: 1rem;
+            }
+            
+            h2 {
+                font-size: 1.25rem !important;
+            }
+            
+            h3 {
+                font-size: 1.125rem !important;
+            }
+            
+            .text-4xl {
+                font-size: 2rem !important;
+            }
+            
+            .text-2xl {
+                font-size: 1.5rem !important;
+            }
+            
+            .text-xl {
+                font-size: 1.125rem !important;
+            }
+            
+            /* Smaller cards on very small screens */
+            .card {
+                padding: 0.875rem !important;
+            }
+            
+            /* Compact stats */
+            .stats-grid > div {
+                padding: 1rem !important;
+            }
+            
+            /* Full width buttons always on small mobile */
+            button.btn-primary,
+            #startScanBtn {
+                width: 100% !important;
+            }
+        }
+        
+        /* Default: Hide mobile menu toggle, show desktop nav */
+        .mobile-menu-toggle {
+            display: none;
+        }
+        
+        .desktop-nav {
+            display: flex;
+        }
+        
+        /* Hide mobile nav on desktop by default */
+        .mobile-nav {
+            display: none;
+        }
+        
+        /* Show mobile nav on mobile */
+        @media (max-width: 768px) {
+            .mobile-nav {
+                display: block;
+            }
+        }
+        
+        /* Better focus states for accessibility */
+        button:focus-visible,
+        a:focus-visible,
+        input:focus-visible,
+        select:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        
+        /* Improve readability on all devices */
+        body {
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+        }
+        
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        /* Prevent text selection on buttons for better UX */
+        button {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        /* Better link touch targets */
+        a {
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
+    <!-- Mobile Navigation Overlay -->
+    <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
+    
     <!-- Header -->
-    <header class="px-6 py-4">
-        <div class="container mx-auto flex items-center justify-between">
+    <header class="py-4" style="margin-bottom: 0;">
+        <div class="container mx-auto px-6 max-w-7xl flex items-center justify-between">
             <div class="flex items-center space-x-3">
-                <i class="fas fa-shield-alt text-3xl" style="color: var(--accent);"></i>
-                <h1 class="text-2xl font-bold" style="color: var(--text-main);">SecurityScan</h1>
+                <a href="/">
+                    <img src="/static/DarkOrca.png" alt="DarkOrca Logo" style="height: 110px; width: auto;">
+                </a>
             </div>
-            <div class="text-sm" style="color: var(--text-muted);">
-                <i class="fas fa-bug mr-2"></i>
-                Security Assessment Platform
+            
+            <!-- Desktop Navigation -->
+            <div class="desktop-nav flex items-center space-x-6">
+                <a href="/" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Home
+                </a>
+                <a href="/glossary" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Glossary
+                </a>
+                <a href="/faq" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    FAQ
+                </a>
+                <a href="/about" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    About
+                </a>
+                {% if user %}
+                <a href="/profile" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Profile
+                </a>
+                <a href="/logout" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Logout
+                </a>
+                {% else %}
+                <a href="/login" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Login
+                </a>
+                {% endif %}
             </div>
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" onclick="toggleMobileNav()" aria-label="Toggle menu">
+                <i class="fas fa-bars" id="mobileMenuIcon"></i>
+            </button>
         </div>
     </header>
-
+    
+    <!-- Mobile Navigation Menu -->
+    <nav class="mobile-nav" id="mobileNav">
+        <div class="flex items-center justify-between mb-6">
+            <h3 style="color: var(--text-main); font-size: 1.25rem; font-weight: 600;">Menu</h3>
+            <button onclick="closeMobileNav()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <a href="/" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Home
+        </a>
+        <a href="/glossary" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Glossary
+        </a>
+        <a href="/faq" onclick="closeMobileNav()" style="font-size: 1rem;">
+            FAQ
+        </a>
+        <a href="/about" onclick="closeMobileNav()" style="font-size: 1rem;">
+            About
+        </a>
+        {% if user %}
+        <a href="/profile" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Profile
+        </a>
+        <a href="/logout" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Logout
+        </a>
+        {% else %}
+        <a href="/login" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Login
+        </a>
+        {% endif %}
+    </nav>
+    
+    <script>
+        function toggleMobileNav() {
+            const nav = document.getElementById('mobileNav');
+            const overlay = document.getElementById('mobileNavOverlay');
+            const icon = document.getElementById('mobileMenuIcon');
+            
+            nav.classList.toggle('open');
+            overlay.classList.toggle('open');
+            icon.classList.toggle('fa-bars');
+            icon.classList.toggle('fa-times');
+        }
+        
+        function closeMobileNav() {
+            const nav = document.getElementById('mobileNav');
+            const overlay = document.getElementById('mobileNavOverlay');
+            const icon = document.getElementById('mobileMenuIcon');
+            
+            nav.classList.remove('open');
+            overlay.classList.remove('open');
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        }
+        
+        // Ensure mobile nav is closed on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            closeMobileNav();
+        });
+    </script>
     <!-- Main Content -->
     <main class="container mx-auto px-6 py-8 max-w-7xl">
         <!-- Scan Configuration Card -->
-        <div class="card p-6 mb-6">
-            <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main);">
+        <div class="card p-6">
+            <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main); letter-spacing: -0.01em;">
                 <i class="fas fa-cog mr-2" style="color: var(--accent);"></i>
                 New Security Scan
             </h2>
@@ -365,18 +846,18 @@
 
         <!-- Scan Progress -->
         <div id="scanProgress" class="hidden card p-6 mb-6">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-3">
                 <h3 class="text-xl font-semibold" style="color: var(--text-main);">
                     <i class="fas fa-spinner fa-spin mr-2" style="color: var(--accent);"></i>
                     Scan in Progress
                 </h3>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
                     <span id="scanStatus" class="text-sm" style="color: var(--text-muted);">Initializing...</span>
                     <button 
                         id="cancelScanBtn" 
                         onclick="cancelScan()"
-                        class="hidden text-sm px-3 py-1 rounded-lg transition duration-200"
-                        style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3);"
+                        class="hidden text-sm px-4 py-2 rounded-lg transition duration-200"
+                        style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); min-height: 44px;"
                     >
                         <i class="fas fa-times mr-1"></i>Cancel
                     </button>
@@ -385,18 +866,18 @@
             <div class="w-full rounded-full h-3 mb-3" style="background: rgba(255, 255, 255, 0.1);">
                 <div id="progressBar" class="progress-bar h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
-            <div class="flex items-center justify-between text-sm">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between text-sm gap-3 mt-3">
                 <div>
                     <p id="currentScanner" class="font-medium" style="color: var(--text-main);"></p>
-                    <p id="scannerProgress" class="mt-1" style="color: var(--text-muted);"></p>
+                    <p id="scannerProgress" class="mt-1" style="color: var(--text-muted); font-size: 0.875rem;"></p>
                 </div>
-                <div class="text-right">
+                <div class="text-left md:text-right">
                     <p id="elapsedTime" class="font-medium text-sm" style="color: var(--text-main);">
                         <i class="fas fa-clock mr-1"></i>
                         <span class="text-xs" style="color: var(--text-muted);">Elapsed: </span>
                         <span id="elapsedTimeText">0s</span>
                     </p>
-                    <p id="estimatedTime" class="mt-1 text-sm" style="color: var(--text-muted);">
+                    <p id="estimatedTime" class="mt-1 text-sm" style="color: var(--text-muted); font-size: 0.875rem;">
                         <i class="fas fa-hourglass-half mr-1"></i>
                         <span class="text-xs" id="estimatedTimeLabel">Est. for current step: </span>
                         <span id="estimatedTimeText">Calculating...</span>
@@ -408,66 +889,66 @@
         <!-- Results -->
         <div id="scanResults" class="hidden">
             <!-- Risk Summary -->
-            <div class="card p-6 mb-6">
-                <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main);">
+            <div class="card p-6">
+                <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main); letter-spacing: -0.01em;">
                     <i class="fas fa-chart-line mr-2" style="color: var(--accent);"></i>
                     Risk Assessment
                 </h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div class="text-center p-4 rounded-lg" style="background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.2);">
-                        <div id="riskScore" class="text-4xl font-bold" style="color: var(--accent);">0</div>
-                        <div class="text-sm mt-1" style="color: var(--text-muted);">Risk Score</div>
+                    <div class="text-center p-5 rounded-lg" style="background: rgba(255, 107, 107, 0.08); border: 1px solid rgba(255, 107, 107, 0.2); backdrop-filter: blur(10px); transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(255, 107, 107, 0.2)'" onmouseout="this.style.transform=''; this.style.boxShadow=''">
+                        <div id="riskScore" class="text-4xl font-bold" style="color: var(--accent); text-shadow: 0 0 20px rgba(255, 107, 107, 0.3);">0</div>
+                        <div class="text-sm mt-2" style="color: var(--text-muted); font-weight: 500;">Risk Score</div>
                     </div>
-                    <div class="text-center p-4 rounded-lg" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2);">
-                        <div id="findingsCount" class="text-4xl font-bold" style="color: #93c5fd;">0</div>
-                        <div class="text-sm mt-1" style="color: var(--text-muted);">Total Findings</div>
+                    <div class="text-center p-5 rounded-lg" style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); backdrop-filter: blur(10px); transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(59, 130, 246, 0.2)'" onmouseout="this.style.transform=''; this.style.boxShadow=''">
+                        <div id="findingsCount" class="text-4xl font-bold" style="color: #93c5fd; text-shadow: 0 0 20px rgba(59, 130, 246, 0.3);">0</div>
+                        <div class="text-sm mt-2" style="color: var(--text-muted); font-weight: 500;">Total Findings</div>
                     </div>
-                    <div class="text-center p-4 rounded-lg" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2);">
-                        <div id="riskLevel" class="text-4xl font-bold" style="color: #86efac;">-</div>
-                        <div class="text-sm mt-1" style="color: var(--text-muted);">Risk Level</div>
+                    <div class="text-center p-5 rounded-lg" style="background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.2); backdrop-filter: blur(10px); transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(34, 197, 94, 0.2)'" onmouseout="this.style.transform=''; this.style.boxShadow=''">
+                        <div id="riskLevel" class="text-4xl font-bold" style="color: #86efac; text-shadow: 0 0 20px rgba(34, 197, 94, 0.3);">-</div>
+                        <div class="text-sm mt-2" style="color: var(--text-muted); font-weight: 500;">Risk Level</div>
                     </div>
                 </div>
                 
                 <!-- Visualizations -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Risk Score Gauge -->
-                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                    <div class="p-4 rounded-lg chart-container" style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);">
                         <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Risk Score</h3>
-                        <canvas id="riskGaugeChart" style="max-height: 200px;"></canvas>
+                        <canvas id="riskGaugeChart" style="max-height: 200px; width: 100% !important; height: auto !important;"></canvas>
                     </div>
                     
                     <!-- Findings by Severity -->
-                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                    <div class="p-4 rounded-lg chart-container" style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);">
                         <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Findings by Severity</h3>
-                        <canvas id="severityChart" style="max-height: 200px;"></canvas>
+                        <canvas id="severityChart" style="max-height: 200px; width: 100% !important; height: auto !important;"></canvas>
                     </div>
                     
                     <!-- Findings by Category -->
-                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                    <div class="p-4 rounded-lg chart-container" style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);">
                         <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Findings by Category</h3>
-                        <canvas id="categoryChart" style="max-height: 200px;"></canvas>
+                        <canvas id="categoryChart" style="max-height: 200px; width: 100% !important; height: auto !important;"></canvas>
                     </div>
                     
                     <!-- Scanner Activity -->
-                    <div class="p-4 rounded-lg" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-soft);">
+                    <div class="p-4 rounded-lg chart-container" style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px);">
                         <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Scanner Activity</h3>
-                        <canvas id="scannerChart" style="max-height: 200px;"></canvas>
+                        <canvas id="scannerChart" style="max-height: 200px; width: 100% !important; height: auto !important;"></canvas>
                     </div>
                 </div>
             </div>
 
             <!-- Findings -->
             <div class="card p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-2xl font-semibold" style="color: var(--text-main);">
+                <div class="flex items-center justify-between mb-4 findings-header">
+                    <h2 class="text-2xl font-semibold" style="color: var(--text-main); letter-spacing: -0.01em;">
                         <i class="fas fa-list mr-2" style="color: var(--accent);"></i>
                         Findings
                     </h2>
-                    <div class="flex space-x-2">
-                        <button id="filterAll" class="px-3 py-1 rounded text-sm btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">All</button>
-                        <button id="filterCritical" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft);">Critical</button>
-                        <button id="filterHigh" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft);">High</button>
-                        <button id="filterMedium" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft);">Medium</button>
+                    <div class="flex space-x-2 findings-filters" style="width: 100%;">
+                        <button id="filterAll" class="px-3 py-1 rounded text-sm btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem; min-height: 44px;">All</button>
+                        <button id="filterCritical" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft); min-height: 44px;">Critical</button>
+                        <button id="filterHigh" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft); min-height: 44px;">High</button>
+                        <button id="filterMedium" class="px-3 py-1 rounded text-sm" style="background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid var(--border-soft); min-height: 44px;">Medium</button>
                     </div>
                 </div>
                 <div id="findingsList" class="space-y-4">
@@ -486,14 +967,14 @@
                     <i id="informationToggleIcon" class="fas fa-chevron-down transition-transform duration-200" style="color: var(--text-muted);"></i>
                 </button>
                 <div id="informationContent" class="hidden overflow-hidden transition-all duration-300">
-                    <div id="informationTable" class="overflow-x-auto">
+                    <div id="informationTable" class="overflow-x-auto" style="-webkit-overflow-scrolling: touch;">
                         <!-- Information table will be inserted here -->
                     </div>
                 </div>
             </div>
             
             <!-- Security Checks Section -->
-            <div class="card p-6 mb-6">
+            <div class="card p-6">
                 <button id="securityChecksToggle" class="w-full flex items-center justify-between text-left mb-4 focus:outline-none transition-colors group">
                     <h2 class="text-2xl font-semibold group-hover:transition-colors" style="color: var(--text-main);">
                         <i class="fas fa-shield-alt mr-2" style="color: var(--accent);"></i>
@@ -512,25 +993,29 @@
     </main>
 
     <!-- Footer -->
-    <footer class="mt-4 py-2 border-t" style="border-color: var(--border-soft); background: rgba(0, 0, 0, 0.2);">
+    <footer class="mt-8 py-4 border-t" style="border-color: var(--border-soft); background: rgba(0, 0, 0, 0.2);">
         <div class="container mx-auto px-6 max-w-7xl">
             <div class="text-center">
-                <p class="text-sm mb-1" style="color: var(--text-muted);">
-                    SecurityScan is part of 
+                <p class="text-sm" style="color: var(--text-muted);">
+                    DarkOrca is part of 
                     <a href="https://darkai.ca/" target="_blank" rel="noopener noreferrer" 
-                       style="color: var(--accent); text-decoration: none; font-weight: 600;"
-                       onmouseover="this.style.color='#ff8e8e'" 
-                       onmouseout="this.style.color='var(--accent)'">
-                        Dark AI
-                    </a>
-                </p>
-                <p class="text-xs" style="color: var(--text-soft);">
-                    Exposing AI-powered harms hidden beneath the surface of the internet.
+                       style="color: var(--accent); text-decoration: none; font-weight: 600;">Dark AI</a>
                 </p>
             </div>
         </div>
     </footer>
 
+    <!-- CSRF Token -->
+    {% if csrf_token %}
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    {% endif %}
+    
     <script src="/static/js/app.js"></script>
+    <script>
+        // Make CSRF token available to JavaScript
+        {% if csrf_token %}
+        window.csrfToken = '{{ csrf_token }}';
+        {% endif %}
+    </script>
 </body>
 </html>

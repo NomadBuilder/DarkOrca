@@ -17,7 +17,7 @@ class EmailSender:
         # Resend API (primary method, same as DarkAI-consolidated)
         self.resend_api_key = os.getenv('RESEND_API_KEY', '')
         self.from_email = os.getenv('FROM_EMAIL', 'onboarding@resend.dev')  # Default Resend domain
-        self.from_name = os.getenv('FROM_NAME', 'SecurityScan')
+        self.from_name = os.getenv('FROM_NAME', 'DarkOrca')
         self.base_url = os.getenv('BASE_URL', 'http://localhost:5001')
         
         # Fallback to SMTP if Resend not configured
@@ -95,7 +95,7 @@ class EmailSender:
             risk_info = risk_config.get(risk_level.lower(), risk_config['minimal'])
             
             # Plain text version
-            text = f"""SecurityScan - Scan Complete
+            text = f"""DarkOrca - Scan Complete
 
 Your security scan has completed.
 
@@ -109,62 +109,63 @@ View Results:
 {results_url}
 
 ---
-SecurityScan - Automated Security Assessment Tool
+DarkOrca - Automated Security Assessment Tool
 Part of Dark AI - https://darkai.ca/
 """
             
             # HTML version - Email-client compatible with inline styles
-            # Using light theme and table-based layout for better compatibility
+            # Updated to match DarkOrca branding with dark theme
             html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; line-height: 1.6;">
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f5f5f5;">
+<body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #05060b; line-height: 1.6;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #05060b; background: radial-gradient(circle at top, #141825 0, #020308 60%);">
         <tr>
-            <td align="center" style="padding: 20px 0;">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #111827; border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);">
                     <!-- Header -->
                     <tr>
-                        <td style="background-color: #dc2626; padding: 30px 25px; text-align: center; border-radius: 8px 8px 0 0;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700;">
-                                🛡️ SecurityScan - Scan Complete
+                        <td style="background-color: #111827; padding: 40px 30px 30px 30px; text-align: center; border-radius: 12px 12px 0 0;">
+                            <img src="{self.base_url}/static/DarkOrca.png" alt="DarkOrca" style="max-height: 80px; width: auto; margin-bottom: 15px; display: block; margin-left: auto; margin-right: auto;" />
+                            <h1 style="margin: 15px 0 0 0; color: #f2f3f5; font-size: 28px; font-weight: 700; letter-spacing: -0.01em;">
+                                Scan Complete
                             </h1>
                         </td>
                     </tr>
                     
                     <!-- Content -->
                     <tr>
-                        <td style="padding: 30px 25px; background-color: #ffffff;">
-                            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
+                        <td style="padding: 30px 30px; background-color: #111827;">
+                            <p style="margin: 0 0 20px 0; color: #f2f3f5; font-size: 16px;">
                                 Your security scan has completed successfully.
                             </p>
                             
                             <!-- Info Card -->
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin: 20px 0;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #0b0d16; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; margin: 20px 0;">
                                 <tr>
-                                    <td style="padding: 20px;">
+                                    <td style="padding: 24px;">
                                         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                                <td style="padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
                                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                         <tr>
-                                                            <td style="color: #6b7280; font-size: 14px; font-weight: 500;">Target:</td>
-                                                            <td align="right" style="color: #111827; font-size: 14px; font-weight: 600;">
-                                                                <a href="{target_url}" style="color: #2563eb; text-decoration: none;">{target_url}</a>
+                                                            <td style="color: #9aa0a6; font-size: 14px; font-weight: 500;">Target:</td>
+                                                            <td align="right" style="color: #f2f3f5; font-size: 14px; font-weight: 600;">
+                                                                <a href="{target_url}" style="color: #ff6b6b; text-decoration: none;">{target_url}</a>
                                                             </td>
                                                         </tr>
                                                     </table>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                                <td style="padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
                                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                         <tr>
-                                                            <td style="color: #6b7280; font-size: 14px; font-weight: 500;">Scan Mode:</td>
-                                                            <td align="right" style="color: #111827; font-size: 14px; font-weight: 600;">
+                                                            <td style="color: #9aa0a6; font-size: 14px; font-weight: 500;">Scan Mode:</td>
+                                                            <td align="right" style="color: #f2f3f5; font-size: 14px; font-weight: 600;">
                                                                 {risk_info['emoji']} {scan_mode.title()}
                                                             </td>
                                                         </tr>
@@ -172,22 +173,22 @@ Part of Dark AI - https://darkai.ca/
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                                <td style="padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
                                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                         <tr>
-                                                            <td style="color: #6b7280; font-size: 14px; font-weight: 500;">Risk Score:</td>
-                                                            <td align="right" style="color: #111827; font-size: 14px; font-weight: 600;">{risk_score:.1f}/100</td>
+                                                            <td style="color: #9aa0a6; font-size: 14px; font-weight: 500;">Risk Score:</td>
+                                                            <td align="right" style="color: #f2f3f5; font-size: 14px; font-weight: 600;">{risk_score:.1f}/100</td>
                                                         </tr>
                                                     </table>
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">
+                                                <td style="padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
                                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                         <tr>
-                                                            <td style="color: #6b7280; font-size: 14px; font-weight: 500;">Risk Level:</td>
+                                                            <td style="color: #9aa0a6; font-size: 14px; font-weight: 500;">Risk Level:</td>
                                                             <td align="right">
-                                                                <span style="display: inline-block; padding: 4px 12px; background-color: {'#fee2e2' if risk_level.lower() == 'critical' else '#fed7aa' if risk_level.lower() == 'high' else '#fef3c7' if risk_level.lower() == 'medium' else '#dbeafe' if risk_level.lower() == 'low' else '#f3f4f6'}; color: {'#dc2626' if risk_level.lower() == 'critical' else '#ea580c' if risk_level.lower() == 'high' else '#ca8a04' if risk_level.lower() == 'medium' else '#2563eb' if risk_level.lower() == 'low' else '#6b7280'}; border: 1px solid {'#fecaca' if risk_level.lower() == 'critical' else '#fed7aa' if risk_level.lower() == 'high' else '#fde68a' if risk_level.lower() == 'medium' else '#bfdbfe' if risk_level.lower() == 'low' else '#d1d5db'}; border-radius: 12px; font-weight: 600; font-size: 12px;">
+                                                                <span style="display: inline-block; padding: 6px 14px; background-color: {risk_info['bg']}; color: {risk_info['color']}; border: 1px solid {risk_info['border']}; border-radius: 12px; font-weight: 600; font-size: 12px;">
                                                                     {risk_level.upper()}
                                                                 </span>
                                                             </td>
@@ -196,11 +197,11 @@ Part of Dark AI - https://darkai.ca/
                                                 </td>
                                             </tr>
                                             <tr>
-                                                <td style="padding: 8px 0;">
+                                                <td style="padding: 12px 0;">
                                                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                                         <tr>
-                                                            <td style="color: #6b7280; font-size: 14px; font-weight: 500;">Findings:</td>
-                                                            <td align="right" style="color: #111827; font-size: 14px; font-weight: 600;">{findings_count}</td>
+                                                            <td style="color: #9aa0a6; font-size: 14px; font-weight: 500;">Findings:</td>
+                                                            <td align="right" style="color: #f2f3f5; font-size: 14px; font-weight: 600;">{findings_count}</td>
                                                         </tr>
                                                     </table>
                                                 </td>
@@ -213,15 +214,15 @@ Part of Dark AI - https://darkai.ca/
                             <!-- Button -->
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                                 <tr>
-                                    <td align="center" style="padding: 20px 0;">
-                                        <a href="{results_url}" style="display: inline-block; padding: 14px 28px; background-color: #dc2626; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);">
+                                    <td align="center" style="padding: 24px 0;">
+                                        <a href="{results_url}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #ff6b6b, #c43434); color: #ffffff; text-decoration: none; border-radius: 999px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);">
                                             View Full Results
                                         </a>
                                     </td>
                                 </tr>
                             </table>
                             
-                            <p style="margin: 20px 0 0 0; text-align: center; color: #6b7280; font-size: 12px;">
+                            <p style="margin: 20px 0 0 0; text-align: center; color: #9aa0a6; font-size: 12px;">
                                 This link will remain active for 30 days. You can share it with others or download a PDF report.
                             </p>
                         </td>
@@ -229,17 +230,17 @@ Part of Dark AI - https://darkai.ca/
                     
                     <!-- Footer -->
                     <tr>
-                        <td style="background-color: #f9fafb; padding: 20px 25px; text-align: center; border-top: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
-                            <p style="margin: 0 0 5px 0; color: #374151; font-size: 14px; font-weight: 600;">
-                                SecurityScan
+                        <td style="background-color: #0b0d16; padding: 24px 30px; text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0 0 12px 12px;">
+                            <p style="margin: 0 0 8px 0; color: #f2f3f5; font-size: 16px; font-weight: 700;">
+                                DarkOrca
                             </p>
-                            <p style="margin: 0 0 5px 0; color: #6b7280; font-size: 12px;">
+                            <p style="margin: 0 0 8px 0; color: #9aa0a6; font-size: 13px;">
                                 Automated Security Assessment Tool
                             </p>
-                            <p style="margin: 5px 0 0 0; color: #9ca3af; font-size: 11px;">
-                                Part of <a href="https://darkai.ca/" style="color: #2563eb; text-decoration: none;">Dark AI</a>
+                            <p style="margin: 8px 0 0 0; color: #6b7280; font-size: 12px;">
+                                Part of <a href="https://darkai.ca/" style="color: #ff6b6b; text-decoration: none; font-weight: 600;">Dark AI</a>
                             </p>
-                            <p style="margin: 10px 0 0 0; color: #9ca3af; font-size: 11px;">
+                            <p style="margin: 12px 0 0 0; color: #6b7280; font-size: 11px;">
                                 This is an automated notification. Please do not reply to this email.
                             </p>
                         </td>
@@ -254,9 +255,9 @@ Part of Dark AI - https://darkai.ca/
             
             # Send via Resend (preferred, same as DarkAI-consolidated) or SMTP (fallback)
             if self.method == 'resend':
-                return self._send_via_resend(to_email, f'SecurityScan Complete: {target_url} - {risk_level.upper()} Risk', text, html)
+                return self._send_via_resend(to_email, f'DarkOrca Complete: {target_url} - {risk_level.upper()} Risk', text, html)
             elif self.method == 'smtp':
-                return self._send_via_smtp(to_email, f'SecurityScan Complete: {target_url} - {risk_level.upper()} Risk', text, html)
+                return self._send_via_smtp(to_email, f'DarkOrca Complete: {target_url} - {risk_level.upper()} Risk', text, html)
             else:
                 logger.error("No email method configured")
                 return False
@@ -343,6 +344,146 @@ Part of Dark AI - https://darkai.ca/
             
         except Exception as e:
             logger.error(f"SMTP send failed: {e}", exc_info=True)
+            return False
+    
+    def send_welcome_email(self, to_email: str, username: str) -> bool:
+        """
+        Send welcome email to newly registered user.
+        
+        Args:
+            to_email: Recipient email address
+            username: Username of the new user
+            
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        if not self.enabled:
+            logger.warning("Email notifications disabled, skipping welcome email")
+            return False
+        
+        try:
+            # Plain text version
+            text = f"""Welcome to DarkOrca!
+
+Hi {username},
+
+Thank you for registering with DarkOrca! Your account has been successfully created.
+
+You can now:
+- Run security scans on targets
+- Save and manage scan results
+- Receive email notifications when scans complete
+
+Get started by visiting:
+{self.base_url}
+
+---
+
+DarkOrca - Automated Security Assessment Tool
+Part of Dark AI - https://darkai.ca/
+"""
+            
+            # HTML version - matching DarkOrca branding
+            html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #05060b; line-height: 1.6;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #05060b; background: radial-gradient(circle at top, #141825 0, #020308 60%);">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #111827; border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #111827; padding: 40px 30px 30px 30px; text-align: center; border-radius: 12px 12px 0 0;">
+                            <img src="{self.base_url}/static/DarkOrca.png" alt="DarkOrca" style="max-height: 80px; width: auto; margin-bottom: 15px; display: block; margin-left: auto; margin-right: auto;" />
+                            <h1 style="margin: 15px 0 0 0; color: #f2f3f5; font-size: 28px; font-weight: 700; letter-spacing: -0.01em;">
+                                Welcome to DarkOrca!
+                            </h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 30px 30px; background-color: #111827;">
+                            <p style="margin: 0 0 20px 0; color: #f2f3f5; font-size: 16px;">
+                                Hi <strong style="color: #ff6b6b;">{username}</strong>,
+                            </p>
+                            
+                            <p style="margin: 0 0 20px 0; color: #f2f3f5; font-size: 16px; line-height: 1.8;">
+                                Thank you for registering with DarkOrca! Your account has been successfully created.
+                            </p>
+                            
+                            <!-- Info Card -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #0b0d16; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; margin: 24px 0;">
+                                <tr>
+                                    <td style="padding: 24px;">
+                                        <p style="margin: 0 0 16px 0; color: #9aa0a6; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            Get Started
+                                        </p>
+                                        <p style="margin: 0 0 12px 0; color: #f2f3f5; font-size: 15px;">
+                                            You can now:
+                                        </p>
+                                        <ul style="margin: 0; padding-left: 20px; color: #f2f3f5; font-size: 15px; line-height: 2;">
+                                            <li style="margin-bottom: 8px;">Run security scans on targets</li>
+                                            <li style="margin-bottom: 8px;">Save and manage scan results</li>
+                                            <li style="margin-bottom: 8px;">Receive email notifications when scans complete</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Button -->
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                    <td align="center" style="padding: 24px 0;">
+                                        <a href="{self.base_url}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #ff6b6b, #c43434); color: #ffffff; text-decoration: none; border-radius: 999px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);">
+                                            Get Started
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #0b0d16; padding: 24px 30px; text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0 0 12px 12px;">
+                            <p style="margin: 0 0 8px 0; color: #f2f3f5; font-size: 16px; font-weight: 700;">
+                                DarkOrca
+                            </p>
+                            <p style="margin: 0 0 8px 0; color: #9aa0a6; font-size: 13px;">
+                                Automated Security Assessment Tool
+                            </p>
+                            <p style="margin: 8px 0 0 0; color: #6b7280; font-size: 12px;">
+                                Part of <a href="https://darkai.ca/" style="color: #ff6b6b; text-decoration: none; font-weight: 600;">Dark AI</a>
+                            </p>
+                            <p style="margin: 12px 0 0 0; color: #6b7280; font-size: 11px;">
+                                This is an automated notification. Please do not reply to this email.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+"""
+            
+            # Send via Resend (preferred) or SMTP (fallback)
+            if self.method == 'resend':
+                return self._send_via_resend(to_email, 'Welcome to DarkOrca!', text, html)
+            elif self.method == 'smtp':
+                return self._send_via_smtp(to_email, 'Welcome to DarkOrca!', text, html)
+            else:
+                logger.error("No email method configured")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to send welcome email: {e}", exc_info=True)
             return False
 
 

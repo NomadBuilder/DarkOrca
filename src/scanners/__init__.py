@@ -5,7 +5,6 @@ from .wpscan import WPScanAdapter
 from .nuclei import NucleiAdapter
 from .nmap import NmapAdapter
 from .sqlmap import SQLMapAdapter
-from .wpscan_offensive import WPScanOffensiveAdapter
 from .wordpress_analyzer import WordPressAnalyzer
 from .directory_bruteforcer import DirectoryBruteforcer
 from .parameter_discovery import ParameterDiscovery
@@ -32,6 +31,11 @@ from .template_injection import TemplateInjectionScanner
 from .backup_files import BackupFilesScanner
 from .api_security import APISecurityAnalyzer
 from .content_security import ContentSecurityAnalyzer
+from .jwt_security import JWTSecurityScanner
+from .graphql_security import GraphQLSecurityScanner
+from .deserialization_scanner import DeserializationScanner
+from .websocket_security import WebSocketSecurityScanner
+from .auth_bypass import AuthenticationBypassScanner
 
 __all__ = [
     "BaseScanner",
@@ -39,7 +43,6 @@ __all__ = [
     "NucleiAdapter",
     "NmapAdapter",
     "SQLMapAdapter",
-    "WPScanOffensiveAdapter",
     "WordPressAnalyzer",
     "DirectoryBruteforcer",
     "ParameterDiscovery",
@@ -66,5 +69,10 @@ __all__ = [
     "BackupFilesScanner",
     "APISecurityAnalyzer",
     "ContentSecurityAnalyzer",
+    "JWTSecurityScanner",
+    "GraphQLSecurityScanner",
+    "DeserializationScanner",
+    "WebSocketSecurityScanner",
+    "AuthenticationBypassScanner",
 ]
 

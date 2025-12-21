@@ -11,6 +11,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.evidence_collector import EvidenceCollector
 
 import logging
 logger = logging.getLogger(__name__)
@@ -33,11 +34,9 @@ class FileUploadScanner(BaseScanner):
             enabled=enabled,
             scan_mode=scan_mode
         )
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
         self.session.timeout = 15
         
         # Generate unique test marker
@@ -60,6 +59,8 @@ class FileUploadScanner(BaseScanner):
         # Test each endpoint
         for endpoint in upload_endpoints:
             findings.extend(self._test_upload_endpoint(endpoint, target.url))
+            findings.extend(self._test_polyglot_files(endpoint, target.url))
+            findings.extend(self._test_archive_bombs(endpoint, target.url))
         
         return findings
     
@@ -332,4 +333,176 @@ class FileUploadScanner(BaseScanner):
                 continue
         
         return None
+    
+    def _test_polyglot_files(self, endpoint: str, base_url: str) -> List[Finding]:
+        """Test for polyglot file upload vulnerabilities."""
+        findings = []
+        
+        # Polyglot files - files that are valid in multiple formats
+        polyglot_test_cases = [
+            # GIF + PHP (valid GIF header + PHP code)
+            {
+                'filename': 'shell.gif',
+                'content': b'GIF89a<?php echo "' + self.test_marker.encode() + b'"; __halt_compiler(); ?>',
+                'content_type': 'image/gif',
+                'description': 'GIF + PHP polyglot',
+                'test_marker': self.test_marker,
+            },
+            # JPEG + PHP (simplified - real JPEG polyglot is more complex)
+            {
+                'filename': 'shell.jpg',
+                'content': b'\xff\xd8\xff\xe0\x00\x10JFIF<?php echo "' + self.test_marker.encode() + b'"; ?>',
+                'content_type': 'image/jpeg',
+                'description': 'JPEG + PHP polyglot',
+                'test_marker': self.test_marker,
+            },
+            # SVG with embedded JavaScript (XSS + file upload)
+            {
+                'filename': 'test.svg',
+                'content': f'<svg xmlns="http://www.w3.org/2000/svg"><script>alert("{self.test_marker}")</script></svg>'.encode(),
+                'content_type': 'image/svg+xml',
+                'description': 'SVG with embedded JavaScript',
+                'test_marker': self.test_marker,
+            },
+            # PDF with embedded JavaScript
+            {
+                'filename': 'test.pdf',
+                'content': f'%PDF-1.4\n%<script>alert("{self.test_marker}")</script>'.encode(),
+                'content_type': 'application/pdf',
+                'description': 'PDF with embedded JavaScript',
+                'test_marker': self.test_marker,
+            },
+        ]
+        
+        for test_case in polyglot_test_cases:
+            try:
+                # Prepare file upload
+                files = {
+                    'file': (test_case['filename'], test_case['content'], test_case['content_type']),
+                }
+                
+                # Common field names
+                data_fields = {
+                    'upload': 'test',
+                    'file': 'test',
+                    'image': 'test',
+                }
+                
+                response = self.session.post(endpoint, files=files, data=data_fields, timeout=10)
+                
+                if response.status_code in [200, 201, 302]:
+                    # Check if file was uploaded and is accessible
+                    # Look for the file URL in response
+                    uploaded_file_url = None
+                    
+                    # Try to find file URL in response
+                    url_patterns = [
+                        r'["\']([^"\']*{}[^"\']*)["\']'.format(test_case['filename']),
+                        r'<img[^>]+src=["\']([^"\']+)["\']',
+                        r'href=["\']([^"\']*{}[^"\']*)["\']'.format(test_case['filename']),
+                    ]
+                    
+                    for pattern in url_patterns:
+                        matches = re.findall(pattern, response.text, re.IGNORECASE)
+                        for match in matches:
+                            if test_case['filename'] in match:
+                                uploaded_file_url = urljoin(endpoint, match) if not match.startswith('http') else match
+                                break
+                        if uploaded_file_url:
+                            break
+                    
+                    # Try to access the uploaded file
+                    if uploaded_file_url:
+                        file_response = self.session.get(uploaded_file_url, timeout=5)
+                        
+                        # Check if polyglot content is executable
+                        if test_case['test_marker'] in file_response.text or test_case['test_marker'].encode() in file_response.content:
+                            findings.append(Finding(
+                                title=f"Polyglot File Upload Vulnerability: {test_case['description']}",
+                                description=f"Polyglot file upload vulnerability detected at {endpoint}. {test_case['description']} file was uploaded and executed/processed, indicating weak file validation.",
+                                severity=FindingSeverity.HIGH,
+                                category=FindingCategory.EXPLOITATION,
+                                source_scanner=self.name,
+                                url=uploaded_file_url,
+                                evidence=f"Polyglot file '{test_case['filename']}' uploaded and processed. Test marker '{test_case['test_marker']}' found in response.",
+                                exploitation_details=f"Polyglot file upload confirmed. {test_case['description']} bypassed file type validation and was processed/executed.",
+                                remediation="Implement strict file validation: 1) Verify file magic bytes (not just extension), 2) Re-encode/re-process uploaded files to strip embedded code, 3) Store files outside web root when possible, 4) Use allowlist for allowed file types, 5) Scan uploaded files for malicious content.",
+                                references=["https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload"],
+                                metadata={
+                                    'filename': test_case['filename'],
+                                    'type': 'polyglot',
+                                    'description': test_case['description']
+                                }
+                            ))
+                            break  # Found vulnerability, move on
+                
+            except Exception as e:
+                logger.debug(f"Polyglot file upload test error: {e}")
+                continue
+        
+        return findings
+    
+    def _test_archive_bombs(self, endpoint: str, base_url: str) -> List[Finding]:
+        """Test for archive bomb (ZIP bomb) vulnerabilities."""
+        findings = []
+        
+        try:
+            import io
+            import zipfile
+            
+            # Create a ZIP bomb (highly compressed file that expands to huge size)
+            # We'll create a small ZIP that expands significantly
+            zip_buffer = io.BytesIO()
+            
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zip_file:
+                # Create a file with repeated data (compresses well)
+                # In real attack, this could be millions of times larger
+                bomb_content = 'A' * 1000  # Small for testing, but demonstrates concept
+                
+                # Add same file multiple times (recursive ZIP bomb concept)
+                for i in range(10):
+                    zip_file.writestr(f'file_{i}.txt', bomb_content)
+            
+            zip_data = zip_buffer.getvalue()
+            
+            # Test ZIP upload
+            files = {
+                'file': ('archive.zip', zip_data, 'application/zip'),
+            }
+            
+            data_fields = {
+                'upload': 'test',
+                'file': 'test',
+            }
+            
+            # Measure response time
+            import time
+            start_time = time.time()
+            response = self.session.post(endpoint, files=files, data=data_fields, timeout=30)
+            elapsed_time = time.time() - start_time
+            
+            # If response takes very long, might indicate decompression DoS
+            if elapsed_time > 10:
+                findings.append(Finding(
+                    title="Potential Archive Bomb (ZIP Bomb) Vulnerability",
+                    description=f"Archive upload at {endpoint} caused significant processing delay ({elapsed_time:.2f}s), indicating potential vulnerability to ZIP bomb attacks.",
+                    severity=FindingSeverity.MEDIUM,
+                    category=FindingCategory.WEAK_SECURITY,
+                    source_scanner=self.name,
+                    url=endpoint,
+                    evidence=f"ZIP file upload caused {elapsed_time:.2f}s processing delay",
+                    remediation="Implement archive upload limits: 1) Limit archive size, 2) Limit number of files in archive, 3) Limit total extracted size, 4) Set timeout for extraction, 5) Scan archives before extraction, 6) Extract in isolated environment with resource limits.",
+                    references=["https://en.wikipedia.org/wiki/Zip_bomb"],
+                    metadata={
+                        'processing_time': elapsed_time,
+                        'type': 'archive_bomb'
+                    }
+                ))
+        
+        except Exception as e:
+            # ZIP creation might fail - skip silently
+            logger.debug(f"Archive bomb test error (may not have zipfile): {e}")
+            pass
+        
+        return findings
 

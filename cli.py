@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI interface for SecurityScan."""
+"""CLI interface for DarkOrca."""
 
 import argparse
 import logging
@@ -14,6 +14,12 @@ from src.models.scan_mode import ScanMode
 
 def setup_logging(verbose: bool = False):
     """Setup logging configuration."""
+    # Suppress SSL warnings and connection pool warnings from urllib3
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    # Also suppress connection pool warnings (expected during rate limiting tests)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+    
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,

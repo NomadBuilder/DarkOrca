@@ -12,6 +12,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.evidence_collector import EvidenceCollector
 
 import logging
 logger = logging.getLogger(__name__)
@@ -37,11 +38,9 @@ class PathTraversalScanner(BaseScanner):
             scan_mode=scan_mode
         )
         self.exhaustive = exhaustive
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
         self.session.timeout = 10
         
         # Generate unique test marker

@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - DarkOrca</title>
+    <link rel="icon" type="image/png" href="/static/DarkOrca.png">
+    <link rel="alternate icon" href="/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --bg: #05060b;
+            --bg-alt: #0b0d16;
+            --panel: #111827;
+            --accent: #ff6b6b;
+            --accent-soft: rgba(255, 107, 107, 0.18);
+            --border-soft: rgba(255, 255, 255, 0.08);
+            --text-main: #f2f3f5;
+            --text-muted: #9aa0a6;
+            --text-soft: #6b7280;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        body {
+            background: var(--bg);
+            background-size: cover;
+            color: var(--text-main);
+            min-height: 100vh;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at top, #141825 0, #020308 60%);
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        body > * {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .faq-item {
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-md);
+            margin-bottom: 1rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .faq-item:hover {
+            border-color: var(--accent);
+        }
+        
+        .faq-question {
+            padding: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        
+        .faq-question:hover {
+            background: rgba(255, 107, 107, 0.05);
+        }
+        
+        .faq-question.active {
+            background: var(--accent-soft);
+            border-bottom: 1px solid var(--border-soft);
+        }
+        
+        .faq-question-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-main);
+            flex: 1;
+        }
+        
+        .faq-icon {
+            color: var(--accent);
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+            margin-left: 1rem;
+        }
+        
+        .faq-item.active .faq-icon {
+            transform: rotate(180deg);
+        }
+        
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+            padding: 0 1.5rem;
+        }
+        
+        .faq-item.active .faq-answer {
+            max-height: 1000px;
+            padding: 0 1.5rem 1.5rem 1.5rem;
+        }
+        
+        /* Header */
+        header {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(16px);
+            border-bottom: none;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        /* Default: Hide mobile menu toggle, show desktop nav */
+        .mobile-menu-toggle {
+            display: none;
+        }
+        
+        .desktop-nav {
+            display: flex;
+        }
+        
+        /* Hide mobile nav on desktop by default */
+        .mobile-nav {
+            display: none;
+        }
+        
+        .mobile-nav-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1999;
+            backdrop-filter: blur(4px);
+        }
+        
+        .mobile-nav-overlay.open {
+            display: block;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .card {
+                padding: 1rem !important;
+            }
+            
+            h1 {
+                font-size: 1.5rem !important;
+            }
+            
+            .container {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+            
+            header img {
+                height: 70px !important;
+            }
+            
+            /* Mobile navigation */
+            .mobile-menu-toggle {
+                display: block !important;
+                background: none;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: var(--text-main);
+                padding: 0.5rem 0.75rem;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1.25rem;
+                transition: all 0.2s ease;
+            }
+            
+            .mobile-menu-toggle:hover {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            
+            .desktop-nav {
+                display: none !important;
+            }
+            
+            .mobile-nav {
+                display: block;
+                position: fixed;
+                top: 0;
+                right: -100%;
+                width: 280px;
+                height: 100vh;
+                background: rgba(10, 15, 20, 0.98);
+                backdrop-filter: blur(20px);
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 2rem 1.5rem;
+                z-index: 2000;
+                transition: right 0.3s ease;
+                overflow-y: auto;
+            }
+            
+            .mobile-nav.open {
+                right: 0;
+            }
+            
+            .mobile-nav a {
+                display: block;
+                padding: 1rem;
+                margin-bottom: 0.5rem;
+                color: var(--text-main);
+                text-decoration: none;
+                border-radius: 8px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                transition: all 0.2s;
+            }
+            
+            .mobile-nav a:hover, .mobile-nav a:active {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 107, 107, 0.3);
+                color: var(--accent);
+            }
+        }
+        
+        @media (max-width: 640px) {
+            header img {
+                height: 60px !important;
+            }
+            
+            .card {
+                padding: 0.875rem !important;
+            }
+        }
+        
+        .faq-answer-content {
+            color: var(--text-muted);
+            line-height: 1.8;
+            padding-top: 1rem;
+        }
+        
+        .faq-answer-content ul, .faq-answer-content ol {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .faq-answer-content li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .faq-category {
+            margin-bottom: 2rem;
+        }
+        
+        .faq-category-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--accent);
+        }
+        
+        .faq-category-title i {
+            color: var(--accent);
+        }
+        
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            transition: color 0.2s;
+        }
+        
+        .back-link:hover {
+            color: #ff8e8e;
+        }
+        
+        .search-box {
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            color: var(--text-main);
+            padding: 0.75rem 1rem;
+            padding-left: 2.5rem;
+            border-radius: var(--radius-md);
+            width: 100%;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        
+        code {
+            background: rgba(255, 107, 107, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: var(--accent);
+        }
+        
+        .highlight {
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+    </style>
+    {% if csrf_token %}
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <script>
+        window.csrfToken = '{{ csrf_token }}';
+    </script>
+    {% endif %}
+</head>
+<body>
+    <!-- Mobile Navigation Overlay -->
+    <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
+    
+    <!-- Header -->
+    <header class="py-4">
+        <div class="container mx-auto px-6 max-w-7xl flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <a href="/">
+                    <img src="/static/DarkOrca.png" alt="DarkOrca Logo" style="height: 110px; width: auto;">
+                </a>
+            </div>
+            
+            <!-- Desktop Navigation -->
+            <div class="desktop-nav flex items-center space-x-6">
+                <a href="/" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Home
+                </a>
+                <a href="/glossary" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Glossary
+                </a>
+                <a href="/faq" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    FAQ
+                </a>
+                <a href="/about" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    About
+                </a>
+                {% if user %}
+                <a href="/profile" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Profile
+                </a>
+                <a href="/logout" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Logout
+                </a>
+                {% else %}
+                <a href="/login" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Login
+                </a>
+                {% endif %}
+            </div>
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" onclick="toggleMobileNav()" aria-label="Toggle menu">
+                <i class="fas fa-bars" id="mobileMenuIcon"></i>
+            </button>
+        </div>
+    </header>
+    
+    <!-- Mobile Navigation Menu -->
+    <nav class="mobile-nav" id="mobileNav">
+        <div class="flex items-center justify-between mb-6">
+            <h3 style="color: var(--text-main); font-size: 1.25rem; font-weight: 600;">Menu</h3>
+            <button onclick="closeMobileNav()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <a href="/" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Home
+        </a>
+        <a href="/glossary" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Glossary
+        </a>
+        <a href="/faq" onclick="closeMobileNav()" style="font-size: 1rem;">
+            FAQ
+        </a>
+        <a href="/about" onclick="closeMobileNav()" style="font-size: 1rem;">
+            About
+        </a>
+        {% if user %}
+        <a href="/profile" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Profile
+        </a>
+        <a href="/logout" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Logout
+        </a>
+        {% else %}
+        <a href="/login" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Login
+        </a>
+        {% endif %}
+    </nav>
+    
+    <script>
+        function toggleMobileNav() {
+            const nav = document.getElementById('mobileNav');
+            const overlay = document.getElementById('mobileNavOverlay');
+            const icon = document.getElementById('mobileMenuIcon');
+            
+            nav.classList.toggle('open');
+            overlay.classList.toggle('open');
+            icon.classList.toggle('fa-bars');
+            icon.classList.toggle('fa-times');
+        }
+        
+        function closeMobileNav() {
+            const nav = document.getElementById('mobileNav');
+            const overlay = document.getElementById('mobileNavOverlay');
+            const icon = document.getElementById('mobileMenuIcon');
+            
+            nav.classList.remove('open');
+            overlay.classList.remove('open');
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        }
+        
+        // Ensure mobile nav is closed on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            closeMobileNav();
+        });
+    </script>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8 max-w-7xl">
+        <a href="/" class="back-link">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to Scanner</span>
+        </a>
+
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold mb-2" style="color: var(--text-main);">Frequently Asked Questions</h1>
+            <p class="text-lg" style="color: var(--text-muted);">
+                Find answers to common questions about DarkOrca security assessment platform
+            </p>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-6 relative">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2" style="color: var(--text-muted);"></i>
+            <input 
+                type="text" 
+                id="faqSearch"
+                class="search-box" 
+                placeholder="Search FAQs..."
+                onkeyup="filterFAQs()"
+            >
+        </div>
+
+        <!-- General Questions -->
+        <div class="faq-category" data-category="general">
+            <h2 class="faq-category-title">
+                <i class="fas fa-question-circle"></i>
+                General Questions
+            </h2>
+            
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What is DarkOrca?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca is a comprehensive security assessment platform designed for defensive security reconnaissance and risk scoring. 
+                        It provides automated scanning capabilities to identify vulnerabilities, misconfigurations, and security weaknesses across web applications and services. 
+                        DarkOrca combines both passive reconnaissance and active exploitation testing to deliver thorough security assessments with detailed risk analysis.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What types of vulnerabilities does DarkOrca detect?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca can detect over 30 different types of security issues, including:
+                        <ul>
+                            <li><strong>Web Application Vulnerabilities:</strong> XSS, SQL Injection, CSRF, SSRF, XXE, Command Injection, Path Traversal, File Upload vulnerabilities, IDOR, Template Injection</li>
+                            <li><strong>API Security:</strong> GraphQL vulnerabilities, JWT security issues, OAuth/SAML misconfigurations</li>
+                            <li><strong>Infrastructure Issues:</strong> SSL/TLS misconfigurations, missing security headers, DNS security problems, weak encryption</li>
+                            <li><strong>WordPress-Specific:</strong> Plugin/theme vulnerabilities, user enumeration, configuration issues</li>
+                            <li><strong>Information Disclosure:</strong> Exposed backup files, sensitive data leaks, error message disclosure</li>
+                        </ul>
+                        For a complete list, visit our <a href="/glossary" style="color: var(--accent);">Security Glossary</a>.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">Is DarkOrca free to use?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca is open-source and available for use. However, some integrated tools (like WPScan) may require API tokens for full functionality. 
+                        The core scanning capabilities are available without cost. Always check the licenses of integrated third-party tools.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scan Modes -->
+        <div class="faq-category" data-category="scan-modes">
+            <h2 class="faq-category-title">
+                <i class="fas fa-cogs"></i>
+                Scan Modes
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What are the different scan modes and when should I use them?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca offers three scan modes:
+                        <ul>
+                            <li><strong>Defensive Mode:</strong> Passive, read-only scanning that performs reconnaissance without attempting exploitation. 
+                                Safe for production systems, perfect for initial assessments and compliance checks. Use this when you need to assess security 
+                                without risking system stability.</li>
+                            <li><strong>Offensive Mode:</strong> Active scanning with exploitation attempts to confirm vulnerabilities. Should only be used with 
+                                explicit authorization as it may impact system stability or trigger security alerts. Use this in staging environments or when 
+                                you have explicit permission to test production systems.</li>
+                            <li><strong>Comprehensive Mode:</strong> Combines both defensive and offensive testing for the most thorough assessment. 
+                                Recommended for complete security evaluations in authorized testing environments.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">Is it safe to use Offensive Mode on production systems?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <span class="highlight">No.</span> Offensive Mode attempts actual exploitation of vulnerabilities, which can:
+                        <ul>
+                            <li>Impact system stability and performance</li>
+                            <li>Trigger security alerts and intrusion detection systems</li>
+                            <li>Potentially cause data corruption or service disruption</li>
+                            <li>Create false security incidents</li>
+                        </ul>
+                        Always use Offensive Mode only in staging/test environments or with explicit written authorization for production systems. 
+                        Defensive Mode is designed to be safe for production use.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What is Exhaustive Mode?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        Exhaustive Mode performs more thorough scanning by using extended payload sets and testing more parameters. 
+                        This results in more comprehensive coverage but takes significantly longer to complete. Use Exhaustive Mode when you need 
+                        the most thorough assessment possible, but be aware that scans may take several hours depending on the target size.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Authorization & Legal -->
+        <div class="faq-category" data-category="legal">
+            <h2 class="faq-category-title">
+                <i class="fas fa-gavel"></i>
+                Authorization & Legal
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">Do I need authorization to use DarkOrca?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        <span class="highlight">Yes, always.</span> You must only use DarkOrca on systems you own or have explicit written authorization to test. 
+                        Unauthorized scanning is illegal in most jurisdictions and may result in:
+                        <ul>
+                            <li>Criminal charges under computer fraud and abuse laws</li>
+                            <li>Civil liability for damages</li>
+                            <li>Professional consequences</li>
+                        </ul>
+                        Even Defensive Mode scanning without authorization may violate terms of service and local laws. 
+                        Always obtain proper authorization before conducting security assessments.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What constitutes proper authorization?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        Proper authorization typically includes:
+                        <ul>
+                            <li><strong>Written permission</strong> from the system owner or authorized representative</li>
+                            <li><strong>Scope definition</strong> - what systems, IPs, or domains are covered</li>
+                            <li><strong>Time frame</strong> - when the testing is authorized</li>
+                            <li><strong>Method authorization</strong> - which scan modes and techniques are permitted</li>
+                            <li><strong>Contact information</strong> for the authorizing party</li>
+                        </ul>
+                        For production systems, always get explicit written authorization. For systems you own or control, ensure you have the legal right to test them.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results & Reports -->
+        <div class="faq-category" data-category="results">
+            <h2 class="faq-category-title">
+                <i class="fas fa-chart-bar"></i>
+                Results & Reports
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">How do I interpret the risk score?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca provides a risk score from 0-100, calculated using a weighted algorithm:
+                        <ul>
+                            <li><strong>0-10:</strong> Minimal risk - mostly informational findings</li>
+                            <li><strong>11-25:</strong> Low risk - minor issues that should be addressed</li>
+                            <li><strong>26-50:</strong> Medium risk - moderate security concerns requiring attention</li>
+                            <li><strong>51-75:</strong> High risk - serious vulnerabilities that should be prioritized</li>
+                            <li><strong>76-100:</strong> Critical risk - immediate threats requiring urgent remediation</li>
+                        </ul>
+                        The score also includes category-specific breakdowns to help prioritize different types of vulnerabilities. 
+                        Always review individual findings, as the score is a guideline and should not replace professional judgment.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What file formats can I export results to?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca supports multiple export formats:
+                        <ul>
+                            <li><strong>JSON:</strong> Machine-readable format for programmatic analysis and integration</li>
+                            <li><strong>Markdown:</strong> Human-readable format perfect for documentation and reports</li>
+                            <li><strong>PDF:</strong> Professional formatted report with optional AI-generated executive summary</li>
+                        </ul>
+                        All formats include the complete scan results, findings, evidence, and remediation guidance.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">How long are scan results stored?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        In the web interface, scan results are available for immediate viewing after completion. Shareable result links remain active for 30 days. 
+                        For long-term storage, download and save reports in your preferred format (JSON, Markdown, or PDF). 
+                        Active scans remain in memory for status checks for up to 1 hour after completion.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What is the AI-generated executive summary?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        The AI-generated executive summary provides a high-level analysis of scan results using AI models (OpenAI GPT or Anthropic Claude). 
+                        This feature requires an API key and is optional. The summary offers:
+                        <ul>
+                            <li>Executive-level overview of security posture</li>
+                            <li>Priority recommendations for remediation</li>
+                            <li>Risk assessment summary</li>
+                            <li>Business impact analysis</li>
+                        </ul>
+                        Configure your API key in environment variables to enable this feature. The summary is only included in PDF reports.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- False Positives & Accuracy -->
+        <div class="faq-category" data-category="accuracy">
+            <h2 class="faq-category-title">
+                <i class="fas fa-check-double"></i>
+                Accuracy & False Positives
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">How accurate are DarkOrca's findings?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca uses industry-standard scanning techniques and integrates proven tools like SQLMap, Nuclei, and Nmap. 
+                        However, automated scanning tools can produce false positives. DarkOrca includes evidence collection to help verify findings, 
+                        including HTTP requests/responses and exploitation details where applicable. Always manually verify critical findings before 
+                        taking remediation actions, especially in Offensive Mode where exploitation attempts provide stronger confirmation.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What should I do if I think a finding is a false positive?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        If you suspect a false positive:
+                        <ol>
+                            <li><strong>Review the evidence</strong> provided with the finding, including request/response data</li>
+                            <li><strong>Manually verify</strong> the vulnerability using the provided payloads or techniques</li>
+                            <li><strong>Check if the finding</strong> was from Offensive Mode (more reliable) or Defensive Mode (may need verification)</li>
+                            <li><strong>Consider context</strong> - some findings may be technically accurate but low-risk in your specific environment</li>
+                            <li><strong>Document your findings</strong> if you determine it's a false positive for future reference</li>
+                        </ol>
+                        Remember that false negatives (missed vulnerabilities) are also possible - no scanner catches everything.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance & Limitations -->
+        <div class="faq-category" data-category="performance">
+            <h2 class="faq-category-title">
+                <i class="fas fa-tachometer-alt"></i>
+                Performance & Limitations
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">How long do scans take?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        Scan duration varies significantly based on:
+                        <ul>
+                            <li><strong>Scan mode:</strong> Defensive is faster, Offensive/Comprehensive takes longer</li>
+                            <li><strong>Target complexity:</strong> Number of endpoints, technologies, and applications</li>
+                            <li><strong>Exhaustive mode:</strong> Adds significant time but provides more thorough coverage</li>
+                            <li><strong>Network speed:</strong> Latency and bandwidth to the target</li>
+                            <li><strong>Rate limiting:</strong> Target's rate limiting can slow scans</li>
+                        </ul>
+                        Typical scans range from 5-30 minutes for simple targets to several hours for complex applications in Exhaustive Mode. 
+                        The web interface provides real-time progress updates and time estimates.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What are DarkOrca's limitations?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca has several limitations to be aware of:
+                        <ul>
+                            <li><strong>Automated scanning cannot replace manual testing</strong> - Complex business logic flaws may be missed</li>
+                            <li><strong>Authentication-dependent testing is limited</strong> - Many scanners work best on public-facing endpoints</li>
+                            <li><strong>False positives/negatives</strong> are possible with any automated tool</li>
+                            <li><strong>Rate limiting and WAFs</strong> may prevent complete scanning</li>
+                            <li><strong>Some vulnerabilities require context</strong> that automated tools cannot understand</li>
+                            <li><strong>Network access required</strong> - Cannot test internal-only systems without network access</li>
+                        </ul>
+                        Use DarkOrca as part of a comprehensive security program that includes manual testing, code review, and other assessment methods.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Setup & Configuration -->
+        <div class="faq-category" data-category="setup">
+            <h2 class="faq-category-title">
+                <i class="fas fa-tools"></i>
+                Setup & Configuration
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">What tools does DarkOrca require to be installed?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca integrates with several tools, but many features work without external dependencies:
+                        <ul>
+                            <li><strong>Python 3.8+</strong> - Required for core functionality</li>
+                            <li><strong>SQLMap</strong> - Optional, for SQL injection testing (requires Python 2/3)</li>
+                            <li><strong>Nuclei</strong> - Optional, for vulnerability template scanning (requires Go)</li>
+                            <li><strong>Nmap</strong> - Optional, for network scanning</li>
+                            <li><strong>WPScan</strong> - Optional, for WordPress-specific scanning (requires Ruby)</li>
+                            <li><strong>Subfinder/Amass</strong> - Optional, for subdomain enumeration</li>
+                        </ul>
+                        Core scanners work without external tools, but you'll get more comprehensive results with integrated tools installed.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">How do I configure email notifications?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        Email notifications use Resend (recommended) or SMTP. Configure in your <code>.env</code> file:
+                        <ul>
+                            <li><strong>Resend (Recommended):</strong> Set <code>RESEND_API_KEY</code>, <code>FROM_EMAIL</code>, <code>FROM_NAME</code></li>
+                            <li><strong>SMTP (Fallback):</strong> Set <code>SMTP_SERVER</code>, <code>SMTP_PORT</code>, <code>SMTP_USERNAME</code>, <code>SMTP_PASSWORD</code></li>
+                            <li><strong>Base URL:</strong> Set <code>BASE_URL</code> for proper links in emails</li>
+                        </ul>
+                        When starting a scan via the web interface, enter your email address to receive notifications when the scan completes.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">Can I use DarkOrca from the command line?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        Yes! DarkOrca provides a CLI interface. Basic usage:
+                        <pre style="background: rgba(255, 107, 107, 0.1); padding: 1rem; border-radius: 4px; overflow-x: auto; margin-top: 0.5rem;"><code>python cli.py https://example.com --format json --output report.json</code></pre>
+                        See <code>python cli.py --help</code> for all available options including scan modes, scanner selection, and output formats.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Getting Help -->
+        <div class="faq-category" data-category="help">
+            <h2 class="faq-category-title">
+                <i class="fas fa-life-ring"></i>
+                Getting Help
+            </h2>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">Where can I learn more about security terms and vulnerabilities?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca includes a comprehensive <a href="/glossary" style="color: var(--accent);">Security Glossary</a> with definitions of:
+                        <ul>
+                            <li>Security vulnerabilities and attack types</li>
+                            <li>Scan modes and risk levels</li>
+                            <li>Technical terms and concepts</li>
+                            <li>Scanning concepts and methodologies</li>
+                        </ul>
+                        The glossary is searchable and organized by category. Each term includes definitions and examples to help you understand findings better.
+                    </div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question" onclick="toggleFAQ(this)">
+                    <span class="faq-question-text">How do I report bugs or request features?</span>
+                    <i class="fas fa-chevron-down faq-icon"></i>
+                </div>
+                <div class="faq-answer">
+                    <div class="faq-answer-content">
+                        DarkOrca is part of the <a href="https://darkai.ca/" target="_blank" style="color: var(--accent);">Dark AI</a> ecosystem. 
+                        For bug reports, feature requests, or contributions, check the project repository or contact through the Dark AI platform. 
+                        Include detailed information about your issue, including scan configuration, target type, and any error messages.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-8 p-6 text-center" style="background: var(--panel); border: 1px solid var(--border-soft); border-radius: var(--radius-md);">
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                Still have questions? Check out our <a href="/glossary" style="color: var(--accent);">Security Glossary</a> or 
+                <a href="/about" style="color: var(--accent);">About page</a> for more information.
+            </p>
+            <a href="/" style="display: inline-block; background: var(--accent); color: white; padding: 0.75rem 1.5rem; border-radius: var(--radius-md); text-decoration: none; font-weight: 600; transition: background 0.2s;" onmouseover="this.style.background='#ff8e8e'" onmouseout="this.style.background='var(--accent)'">
+                Start a Security Scan
+            </a>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-8 py-4 border-t" style="border-color: var(--border-soft); background: rgba(0, 0, 0, 0.2);">
+        <div class="container mx-auto px-6 max-w-7xl">
+            <div class="text-center">
+                <p class="text-sm" style="color: var(--text-muted);">
+                    DarkOrca is part of 
+                    <a href="https://darkai.ca/" target="_blank" rel="noopener noreferrer" 
+                       style="color: var(--accent); text-decoration: none; font-weight: 600;">Dark AI</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function toggleFAQ(element) {
+            const faqItem = element.closest('.faq-item');
+            const isActive = faqItem.classList.contains('active');
+            
+            // Close all FAQs
+            document.querySelectorAll('.faq-item').forEach(item => {
+                item.classList.remove('active');
+                item.querySelector('.faq-question').classList.remove('active');
+            });
+            
+            // Open clicked FAQ if it wasn't active
+            if (!isActive) {
+                faqItem.classList.add('active');
+                element.classList.add('active');
+            }
+        }
+        
+        function filterFAQs() {
+            const searchTerm = document.getElementById('faqSearch').value.toLowerCase();
+            const faqCategories = document.querySelectorAll('.faq-category');
+            
+            faqCategories.forEach(category => {
+                const faqItems = category.querySelectorAll('.faq-item');
+                let hasVisibleItems = false;
+                
+                faqItems.forEach(item => {
+                    const questionText = item.querySelector('.faq-question-text').textContent.toLowerCase();
+                    const answerText = item.querySelector('.faq-answer-content').textContent.toLowerCase();
+                    const matches = questionText.includes(searchTerm) || answerText.includes(searchTerm);
+                    
+                    if (matches) {
+                        item.style.display = '';
+                        hasVisibleItems = true;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                
+                // Show/hide category based on visible items
+                category.style.display = hasVisibleItems || !searchTerm ? '' : 'none';
+            });
+        }
+        
+        // Allow Enter key to toggle FAQs
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.target.classList.contains('faq-question')) {
+                toggleFAQ(e.target);
+            }
+        });
+    </script>
+</body>
+</html>

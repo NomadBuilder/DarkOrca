@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - DarkOrca</title>
+    <link rel="icon" type="image/png" href="/static/DarkOrca.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --bg: #05060b;
+            --bg-alt: #0b0d16;
+            --panel: #111827;
+            --accent: #ff6b6b;
+            --accent-soft: rgba(255, 107, 107, 0.18);
+            --border-soft: rgba(255, 255, 255, 0.08);
+            --text-main: #f2f3f5;
+            --text-muted: #9aa0a6;
+            --text-soft: #6b7280;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        
+        body {
+            background: var(--bg);
+            background: radial-gradient(circle at top, #141825 0, #020308 60%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .card {
+            background: var(--bg-alt);
+            border: 1px solid var(--border-soft);
+            border-radius: 12px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+        }
+        
+        input {
+            background: #161923;
+            border: 1px solid var(--border-soft);
+            color: var(--text-main);
+            border-radius: 10px;
+            padding: 0.9rem 1.2rem;
+            width: 100%;
+            font-size: 1rem;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+            
+            .card {
+                padding: 1.5rem !important;
+            }
+            
+            input, button {
+                font-size: 16px !important; /* Prevents zoom on iOS */
+                padding: 1rem 1.2rem !important;
+                min-height: 48px;
+            }
+            
+            img {
+                height: 70px !important;
+            }
+        }
+        
+        @media (max-width: 640px) {
+            body {
+                padding: 0.75rem;
+            }
+            
+            .card {
+                padding: 1.25rem !important;
+            }
+            
+            img {
+                height: 60px !important;
+            }
+            
+            h1 {
+                font-size: 1.5rem !important;
+            }
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #c43434);
+            color: #fff;
+            border: none;
+            border-radius: 999px;
+            padding: 0.9rem 1.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 107, 107, 0.3);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="text-center mb-6">
+            <a href="/">
+                <img src="/static/DarkOrca.png" alt="DarkOrca Logo" style="height: 80px; width: auto; margin: 0 auto 1.5rem;">
+            </a>
+            <h1 class="text-2xl font-bold mb-2" style="color: var(--text-main);">Sign Up</h1>
+            <p class="text-sm" style="color: var(--text-muted);">Create your DarkOrca account</p>
+        </div>
+        
+        <div id="errorMessage" class="error-message"></div>
+        
+        <form id="signupForm">
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2" style="color: var(--text-main);">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username" minlength="3">
+                <p class="text-xs mt-1" style="color: var(--text-soft);">At least 3 characters</p>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2" style="color: var(--text-main);">Email</label>
+                <input type="email" id="email" name="email" required autocomplete="email">
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-2" style="color: var(--text-main);">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="new-password" minlength="6">
+                <p class="text-xs mt-1" style="color: var(--text-soft);">At least 6 characters</p>
+            </div>
+            
+            <button type="submit" class="btn-primary" id="submitBtn">
+                <i class="fas fa-user-plus mr-2"></i>Sign Up
+            </button>
+        </form>
+        
+        <div class="mt-6 text-center">
+            <p class="text-sm" style="color: var(--text-muted);">
+                Already have an account? 
+                <a href="/login" style="color: var(--accent); text-decoration: none; font-weight: 600;">Login</a>
+            </p>
+        </div>
+        
+        <div class="mt-4 text-center">
+            <a href="/" style="color: var(--text-muted); text-decoration: none; font-size: 0.875rem;">
+                <i class="fas fa-arrow-left mr-1"></i>Back to Home
+            </a>
+        </div>
+    </div>
+    
+    <!-- CSRF Token -->
+    {% if csrf_token %}
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <script>
+        window.csrfToken = '{{ csrf_token }}';
+    </script>
+    {% endif %}
+    
+    <script>
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const errorDiv = document.getElementById('errorMessage');
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            
+            errorDiv.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating account...';
+            
+            try {
+                const csrfToken = window.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content;
+                const headers = { 'Content-Type': 'application/json' };
+                if (csrfToken) {
+                    headers['X-CSRF-Token'] = csrfToken;
+                }
+                
+                const response = await fetch('/signup', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ username, email, password, csrf_token: csrfToken })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Redirect to home
+                    window.location.href = '/';
+                } else {
+                    errorDiv.textContent = data.error || 'Signup failed';
+                    errorDiv.style.display = 'block';
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-user-plus mr-2"></i>Sign Up';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-user-plus mr-2"></i>Sign Up';
+            }
+        });
+    </script>
+</body>
+</html>

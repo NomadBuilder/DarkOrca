@@ -1,4 +1,4 @@
-# SecurityScan Requirements
+# DarkOrca Requirements
 # Python 3.8+
 
 # Core dependencies (minimal - most functionality uses subprocess calls to external tools)
@@ -8,6 +8,8 @@
 requests>=2.31.0  # For API integrations and WordPress analyzer
 flask>=2.3.0  # Web UI framework
 flask-cors>=4.0.0  # CORS support for web UI
+flask-limiter>=3.5.0  # Rate limiting for API endpoints
+bcrypt>=4.0.0  # Secure password hashing
 dnspython>=2.4.0  # For DNS subdomain enumeration fallback
 python-whois>=0.8.0  # For WHOIS lookups
 reportlab>=4.0.0  # For PDF report generation

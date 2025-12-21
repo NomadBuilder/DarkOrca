@@ -39,6 +39,11 @@ from .scanners.template_injection import TemplateInjectionScanner
 from .scanners.backup_files import BackupFilesScanner
 from .scanners.api_security import APISecurityAnalyzer
 from .scanners.content_security import ContentSecurityAnalyzer
+from .scanners.jwt_security import JWTSecurityScanner
+from .scanners.graphql_security import GraphQLSecurityScanner
+from .scanners.deserialization_scanner import DeserializationScanner
+from .scanners.websocket_security import WebSocketSecurityScanner
+from .scanners.auth_bypass import AuthenticationBypassScanner
 from .scoring.engine import RiskScoringEngine
 
 logger = logging.getLogger(__name__)
@@ -286,6 +291,51 @@ class ScanOrchestrator:
             except Exception as e:
                 logger.warning(f"Failed to initialize Parameter Discovery: {e}")
             
+            # JWT Security Testing
+            try:
+                jwt_security = JWTSecurityScanner(enabled=True, scan_mode=scan_mode)
+                if jwt_security.is_available():
+                    self.scanners.append(jwt_security)
+                    logger.info("JWT Security Scanner enabled (OFFENSIVE)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize JWT Security Scanner: {e}")
+            
+            # GraphQL Security Testing
+            try:
+                graphql_security = GraphQLSecurityScanner(enabled=True, scan_mode=scan_mode)
+                if graphql_security.is_available():
+                    self.scanners.append(graphql_security)
+                    logger.info("GraphQL Security Scanner enabled (OFFENSIVE)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize GraphQL Security Scanner: {e}")
+            
+            # Deserialization Testing
+            try:
+                deserialization = DeserializationScanner(enabled=True, scan_mode=scan_mode)
+                if deserialization.is_available():
+                    self.scanners.append(deserialization)
+                    logger.info("Deserialization Scanner enabled (OFFENSIVE)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Deserialization Scanner: {e}")
+            
+            # WebSocket Security Testing
+            try:
+                websocket_security = WebSocketSecurityScanner(enabled=True, scan_mode=scan_mode)
+                if websocket_security.is_available():
+                    self.scanners.append(websocket_security)
+                    logger.info("WebSocket Security Scanner enabled (OFFENSIVE)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize WebSocket Security Scanner: {e}")
+            
+            # Authentication Bypass Testing
+            try:
+                auth_bypass = AuthenticationBypassScanner(enabled=True, scan_mode=scan_mode)
+                if auth_bypass.is_available():
+                    self.scanners.append(auth_bypass)
+                    logger.info("Authentication Bypass Scanner enabled (OFFENSIVE)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Authentication Bypass Scanner: {e}")
+            
             # Exploit intelligence
             try:
                 exploit_intel = ExploitIntel(enabled=True, scan_mode=scan_mode)
@@ -444,17 +494,60 @@ class ScanOrchestrator:
         
         # Run all scanners except WordPress Analyzer and ExploitIntel
         # ExploitIntel should run last to use findings from other scanners
+        # Parameter discovery should run early so its results can be used by SQLMap and other scanners
         exploit_intel_scanner = None
+        parameter_discovery_scanner = None
+        sqlmap_scanner = None
         scanners_to_run_filtered = []
         
         for scanner in scanners_to_run:
             if scanner.name == "exploit_intel":
                 exploit_intel_scanner = scanner
+            elif scanner.name == "parameter_discovery":
+                parameter_discovery_scanner = scanner
+            elif scanner.name == "sqlmap":
+                sqlmap_scanner = scanner
             else:
                 scanners_to_run_filtered.append(scanner)
         
-        total_scanners = len(scanners_to_run_filtered) + (1 if wp_analyzer else 0) + (1 if exploit_intel_scanner else 0)
-        completed = 0
+        # Track discovered parameters for use by SQLMap and other scanners
+        discovered_parameters = {}  # Format: {url: [param1, param2, ...]}
+        
+        # Run parameter discovery first if available (so results can be used by other scanners)
+        if parameter_discovery_scanner and parameter_discovery_scanner.enabled:
+            logger.info(f"Running {parameter_discovery_scanner.name} scanner (early for parameter discovery)...")
+            result.scanners_run.append(parameter_discovery_scanner.name)
+            
+            if self.progress_callback:
+                self.progress_callback({
+                    'current_scanner': f'Running {parameter_discovery_scanner.name}...',
+                    'scanners_completed': 0,
+                    'scanners_total': len(scanners_to_run_filtered) + (1 if wp_analyzer else 0) + (1 if exploit_intel_scanner else 0) + (1 if sqlmap_scanner else 0),
+                })
+            
+            try:
+                param_findings = parameter_discovery_scanner.scan(target)
+                logger.info(f"{parameter_discovery_scanner.name} found {len(param_findings)} finding(s)")
+                
+                for finding in param_findings:
+                    result.add_finding(finding)
+                    # Extract discovered parameters from metadata
+                    if finding.metadata and 'parameters' in finding.metadata:
+                        url = finding.url or target.url
+                        params = finding.metadata.get('parameters', [])
+                        if url not in discovered_parameters:
+                            discovered_parameters[url] = []
+                        discovered_parameters[url].extend(params)
+                        # Remove duplicates
+                        discovered_parameters[url] = list(set(discovered_parameters[url]))
+                
+                if discovered_parameters:
+                    logger.info(f"Discovered {sum(len(p) for p in discovered_parameters.values())} parameters for use in subsequent scans")
+            except Exception as e:
+                logger.warning(f"{parameter_discovery_scanner.name} failed: {e}")
+        
+        total_scanners = len(scanners_to_run_filtered) + (1 if wp_analyzer else 0) + (1 if exploit_intel_scanner else 0) + (1 if sqlmap_scanner else 0)
+        completed = 1 if (parameter_discovery_scanner and parameter_discovery_scanner.enabled) else 0
         
         for scanner in scanners_to_run_filtered:
             logger.info(f"Running {scanner.name} scanner...")
@@ -523,6 +616,41 @@ class ScanOrchestrator:
                 error_msg = str(e)
                 logger.error(f"{scanner.name} failed: {error_msg}", exc_info=logger.level == logging.DEBUG)
                 result.scanner_errors[scanner.name] = error_msg
+        
+        # Run SQLMap with discovered parameters if available
+        if sqlmap_scanner and sqlmap_scanner.enabled:
+            logger.info(f"Running {sqlmap_scanner.name} scanner (with discovered parameters if available)...")
+            
+            if self.progress_callback:
+                self.progress_callback({
+                    'current_scanner': f'Running {sqlmap_scanner.name}...',
+                    'scanners_completed': completed,
+                    'scanners_total': total_scanners,
+                })
+            
+            result.scanners_run.append(sqlmap_scanner.name)
+            
+            try:
+                # Pass discovered parameters to SQLMap
+                findings = sqlmap_scanner.scan(target, discovered_parameters=discovered_parameters if discovered_parameters else None)
+                logger.info(f"{sqlmap_scanner.name} found {len(findings)} finding(s)")
+                
+                for finding in findings:
+                    result.add_finding(finding)
+                    if finding.exploited:
+                        result.exploitations_successful += 1
+                
+                completed += 1
+                if self.progress_callback:
+                    self.progress_callback({
+                        'current_scanner': f'Completed {sqlmap_scanner.name}',
+                        'scanners_completed': completed,
+                        'scanners_total': total_scanners,
+                    })
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"{sqlmap_scanner.name} failed: {error_msg}", exc_info=logger.level == logging.DEBUG)
+                result.scanner_errors[sqlmap_scanner.name] = error_msg
         
         # Run ExploitIntel last, with all findings from other scanners
         if exploit_intel_scanner and exploit_intel_scanner.enabled:

@@ -1,4 +1,4 @@
-// SecurityScan Web UI JavaScript
+// DarkOrca Web UI JavaScript
 
 // Suppress harmless browser extension errors
 window.addEventListener('error', (e) => {
@@ -113,11 +113,33 @@ function setupFormHandler() {
             if (email) {
                 console.log('Email notification will be sent to:', email);
             }
+            // Get CSRF token if available
+            let csrfToken = window.csrfToken;
+            if (!csrfToken) {
+                const metaTag = document.querySelector('meta[name="csrf-token"]');
+                csrfToken = metaTag ? metaTag.content : null;
+            }
+            
+            if (!csrfToken) {
+                console.error('CSRF token not found! Cannot submit scan request.');
+                alert('Error: CSRF token missing. Please refresh the page and try again.');
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="fas fa-play mr-2"></i>Start Scan';
+                }
+                return false;
+            }
+            
+            console.log('CSRF token found:', csrfToken.substring(0, 10) + '...');
+            
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            };
+            
             const response = await fetch('/api/scan', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: headers,
                 body: JSON.stringify({
                     target,
                     scan_mode: scanMode,
@@ -127,6 +149,7 @@ function setupFormHandler() {
                     enable_nuclei: enableNuclei,
                     enable_nmap: enableNmap,
                     exhaustive: exhaustive,
+                    csrf_token: csrfToken,  // Also include in body for compatibility
                 }),
             });
             
@@ -495,9 +518,9 @@ async function loadResults(retryCount = 0) {
         
         displayResults(results);
         
-        // Show shareable URL if available
+        // Show shareable URL if available (pass results data for saving)
         if (results.shareable_id) {
-            showShareableUrl(results.shareable_id);
+            showShareableUrl(results.shareable_id, results);
         }
         
         resetForm();
@@ -583,10 +606,93 @@ function showShareableUrl(shareableId) {
                     >
                         <i class="fas fa-file-pdf mr-2"></i>Download PDF
                     </button>
+                    ${(currentScanId || shareableId) ? `
+                    <button 
+                        id="saveToProfileBtn"
+                        onclick="saveScanToProfile('${shareableId || ''}')" 
+                        class="px-4 py-2 rounded"
+                        style="background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); white-space: nowrap;"
+                    >
+                        <i class="fas fa-bookmark mr-2"></i>Save to Profile
+                    </button>
+                    ` : ''}
                 </div>
             </div>
         </div>
     `;
+}
+
+async function saveScanToProfile(shareableId = null) {
+    const scanId = currentScanId || (currentResultsData?.scan_id);
+    const shareableIdToUse = shareableId || currentResultsData?.shareable_id;
+    
+    if (!scanId && !shareableIdToUse) {
+        alert('No scan to save');
+        return;
+    }
+    
+    const btn = document.getElementById('saveToProfileBtn');
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
+    }
+    
+    try {
+        // Get CSRF token
+        const csrfToken = window.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content;
+        const headers = { 'Content-Type': 'application/json' };
+        if (csrfToken) {
+            headers['X-CSRF-Token'] = csrfToken;
+        }
+        
+        const response = await fetch('/api/profile/save-scan', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                scan_id: scanId || 'shared_' + shareableIdToUse,  // Use scan_id if available, otherwise generate one for shared
+                shareable_id: shareableIdToUse,
+                csrf_token: csrfToken
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-check mr-2"></i>Saved!';
+                btn.style.background = 'rgba(34, 197, 94, 0.3)';
+                btn.style.color = '#86efac';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHTML;
+                    btn.style.background = 'rgba(34, 197, 94, 0.2)';
+                }, 2000);
+            }
+            // Show success message
+            alert('Scan saved to your profile!');
+        } else {
+            if (response.status === 401) {
+                // Not logged in, redirect to login
+                if (confirm('You need to be logged in to save scans. Would you like to login now?')) {
+                    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+                }
+            } else {
+                alert(data.error || 'Failed to save scan');
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+        }
+    } catch (error) {
+        console.error('Error saving scan:', error);
+        alert('Error saving scan: ' + error.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    }
 }
 
 function copyShareableUrl() {
@@ -659,7 +765,7 @@ async function downloadPDF(downloadUrl) {
         
         // Extract filename from Content-Disposition header or use default
         const contentDisposition = response.headers.get('content-disposition');
-        let filename = 'securityscan_report.pdf';
+        let filename = 'darkorca_report.pdf';
         if (contentDisposition) {
             const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
             if (filenameMatch && filenameMatch[1]) {

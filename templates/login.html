@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access the Deep - DarkOrca</title>
+    <link rel="icon" type="image/png" href="/static/DarkOrca.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #000000;
+            color: #f2f3f5;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+        
+        /* Deep Ocean Void Background */
+        .ocean-void {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #05070A 0%, #000000 100%);
+            z-index: 0;
+        }
+        
+        /* Subtle particulate drift */
+        .ocean-void::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(0, 150, 255, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(0, 200, 255, 0.02) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(0, 100, 200, 0.01) 0%, transparent 50%);
+            animation: drift 20s ease-in-out infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes drift {
+            0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+            50% { transform: translate(-10px, 10px) scale(1.05); opacity: 0.7; }
+        }
+        
+        .container {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* Hero Visual - Orca */
+        .orca-hero {
+            position: relative;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            padding-bottom: 10vh;
+            max-width: 50%;
+        }
+        
+        .orca-container {
+            position: relative;
+        }
+        
+        /* Additional subtle radial gradient for depth */
+        .orca-container::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 160%;
+            height: 160%;
+            background: radial-gradient(circle, rgba(0, 100, 200, 0.08) 0%, transparent 60%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .orca-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 140%;
+            height: 140%;
+            background: radial-gradient(circle, rgba(0, 200, 255, 0.12) 0%, rgba(0, 150, 255, 0.06) 40%, transparent 75%);
+            border-radius: 50%;
+            animation: glow-pulse 8s ease-in-out infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes glow-pulse {
+            0%, 100% { 
+                opacity: 0.25; 
+                transform: translate(-50%, -50%) scale(1);
+            }
+            50% { 
+                opacity: 0.45; 
+                transform: translate(-50%, -50%) scale(1.08);
+            }
+        }
+        
+        .orca-image {
+            position: relative;
+            max-width: 400px;
+            height: auto;
+            filter: drop-shadow(0 0 30px rgba(0, 200, 255, 0.2));
+            animation: float 8s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+        }
+        
+        /* Orca eye glow pulsing */
+        .orca-image::after {
+            content: '';
+            position: absolute;
+            /* Position roughly where the orca's eye would be - adjust based on actual image */
+            top: 35%;
+            left: 45%;
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, rgba(0, 255, 255, 0.8) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: eye-pulse 6.5s ease-in-out infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes eye-pulse {
+            0%, 85% { opacity: 0.3; transform: scale(0.8); }
+            5%, 90% { opacity: 1; transform: scale(1.2); }
+            7%, 88% { opacity: 0.8; transform: scale(1); }
+        }
+        
+        /* Vignette */
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.4) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        /* Login Panel */
+        .login-panel {
+            flex: 1;
+            max-width: 450px;
+            background: rgba(10, 15, 20, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 3rem 2.5rem;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+        
+        .login-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #f2f3f5;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+        
+        .login-header .subtitle {
+            font-size: 0.875rem;
+            color: #9ca3af;  /* Increased contrast - brighter */
+            font-weight: 500;  /* Slightly bolder */
+            margin-top: 0.75rem;
+            letter-spacing: 0.01em;
+        }
+        
+        .login-header .authorized {
+            font-size: 0.75rem;
+            color: #6b7280;  /* Increased contrast - more visible */
+            margin-top: 1.25rem;  /* More spacing for deliberate feel */
+            font-weight: 400;  /* Slightly bolder */
+            letter-spacing: 0.05em;  /* Slight letter spacing for authority */
+        }
+        
+        /* Input Fields */
+        .input-group {
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        
+        .input-label {
+            display: block;
+            font-size: 0.875rem;
+            color: #9ca3af;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .input-field {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.875rem 1rem;
+            color: #f2f3f5;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: rgba(0, 200, 255, 0.6);  /* Brighter focus ring */
+            background: rgba(0, 0, 0, 0.6);
+            box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1);
+            transition: border-color 0.4s ease, box-shadow 0.4s ease;  /* Smooth fade */
+        }
+        
+        /* Sonar line sweep on focus (one-time animation) */
+        .input-field {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .input-field:focus::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 200, 255, 0.4), transparent);
+            animation: sonar-sweep 0.8s ease-out;
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        @keyframes sonar-sweep {
+            0% { left: -100%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { left: 100%; opacity: 0; }
+        }
+        
+        /* Invalid input pulse */
+        .input-field.error {
+            border-color: rgba(239, 68, 68, 0.6);
+            animation: error-pulse 0.4s ease-out;
+        }
+        
+        @keyframes error-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2); }
+        }
+        
+        /* Password reveal button */
+        .password-wrapper {
+            position: relative;
+        }
+        
+        .password-toggle {
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            padding: 0.5rem;
+            transition: color 0.2s;
+        }
+        
+        .password-toggle:hover {
+            color: #9ca3af;
+        }
+        
+        .password-toggle.active {
+            color: rgba(0, 200, 255, 0.8);
+        }
+        
+        /* Sonar ping reveal animation */
+        .password-toggle.ping::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(0, 200, 255, 0.6);
+            border-radius: 50%;
+            animation: sonar-ping 0.5s ease-out;
+            pointer-events: none;
+        }
+        
+        @keyframes sonar-ping {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+        }
+        
+        /* Primary Button */
+        .btn-primary {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, rgba(0, 100, 200, 0.8), rgba(0, 200, 255, 0.8));
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+        
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 200, 255, 0.3);
+        }
+        
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0) scale(0.98);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Error message */
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 0.875rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        /* Loading state - Sonar rings */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        
+        .loading-overlay.active {
+            display: flex;
+        }
+        
+        .sonar-loader {
+            position: relative;
+            width: 100px;
+            height: 100px;
+        }
+        
+        .sonar-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            border: 2px solid rgba(0, 200, 255, 0.4);
+            border-radius: 50%;
+            animation: sonar-expand 2s ease-out infinite;
+        }
+        
+        .sonar-ring:nth-child(2) {
+            animation-delay: 0.5s;
+        }
+        
+        .sonar-ring:nth-child(3) {
+            animation-delay: 1s;
+        }
+        
+        @keyframes sonar-expand {
+            0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+        }
+        
+        .loading-text {
+            margin-top: 2rem;
+            color: #6b7280;
+            font-size: 0.875rem;
+            text-align: center;
+        }
+        
+        .loading-text-line {
+            margin: 0.25rem 0;
+            animation: fade-in-out 2s ease-in-out infinite;
+        }
+        
+        .loading-text-line:nth-child(2) {
+            animation-delay: 1s;
+        }
+        
+        @keyframes fade-in-out {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+        
+        /* Orca dive animation */
+        .orca-dive {
+            animation: dive-down 1s ease-in forwards !important;
+        }
+        
+        @keyframes dive-down {
+            0% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(100vh); opacity: 0; }
+        }
+        
+        /* Link to signup */
+        .signup-link {
+            text-align: center;
+            margin-top: 2rem;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+        
+        .signup-link a {
+            color: rgba(0, 200, 255, 0.8);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        
+        .signup-link a:hover {
+            color: rgba(0, 200, 255, 1);
+        }
+        
+        /* CLI hint */
+        .cli-hint {
+            position: fixed;
+            bottom: 0.75rem;
+            right: 1rem;  /* Align to panel edge instead of center */
+            font-size: 0.65rem;  /* Slightly smaller */
+            color: #1f2937;  /* Lower contrast - more subtle */
+            font-family: 'Courier New', monospace;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0.5;  /* More subtle */
+            letter-spacing: 0.05em;
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 968px) {
+            .container {
+                flex-direction: column;
+                justify-content: center;
+            }
+            
+            .orca-hero {
+                max-width: 100%;
+                padding-bottom: 2rem;
+            }
+            
+            .orca-image {
+                max-width: 250px;
+            }
+            
+            .login-panel {
+                max-width: 100%;
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 640px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .login-panel {
+                padding: 1.5rem 1.25rem;
+            }
+            
+            .orca-image {
+                max-width: 180px;
+            }
+            
+            /* Touch-friendly inputs */
+            .input-field {
+                font-size: 16px !important; /* Prevents iOS zoom */
+                min-height: 48px;
+                padding: 0.875rem 1rem !important;
+            }
+            
+            .btn-primary {
+                min-height: 48px;
+                padding: 1rem !important;
+            }
+            
+            /* Better spacing */
+            .login-header {
+                margin-bottom: 1.5rem;
+            }
+            
+            .form-group {
+                margin-bottom: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="ocean-void"></div>
+    <div class="vignette"></div>
+    
+    <div class="container">
+        <!-- Hero Orca -->
+        <div class="orca-hero">
+            <div class="orca-container">
+                <div class="orca-glow"></div>
+                <img src="/static/DarkOrca.png" alt="DarkOrca" class="orca-image" id="orcaImage">
+            </div>
+        </div>
+        
+        <!-- Login Panel -->
+        <div class="login-panel">
+            <div class="login-header">
+                <h1>DarkOrca</h1>
+                <div class="subtitle">Security Assessment Platform</div>
+                <div class="authorized">Authorized access only</div>
+            </div>
+            
+            <div id="errorMessage" class="error-message"></div>
+            
+            <form id="loginForm">
+                <div class="input-group">
+                    <label class="input-label" for="username">Username / API Key</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        class="input-field" 
+                        required 
+                        autocomplete="username"
+                    >
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label" for="password">Password</label>
+                    <div class="password-wrapper">
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            class="input-field" 
+                            required 
+                            autocomplete="current-password"
+                        >
+                        <button 
+                            type="button" 
+                            class="password-toggle" 
+                            id="passwordToggle"
+                            aria-label="Toggle password visibility"
+                        >
+                            <i class="fas fa-wifi" style="transform: rotate(45deg);"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    Enter the Depths
+                </button>
+            </form>
+            
+            <div class="signup-link">
+                Don't have access? <a href="/signup">Request authorized access</a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="sonar-loader">
+            <div class="sonar-ring"></div>
+            <div class="sonar-ring"></div>
+            <div class="sonar-ring"></div>
+        </div>
+        <div class="loading-text">
+            <div class="loading-text-line">Establishing secure channel…</div>
+            <div class="loading-text-line">Calibrating scanners…</div>
+        </div>
+    </div>
+    
+    <!-- CLI Hint - Subtle lore element -->
+    <div class="cli-hint">$ darkorca auth login</div>
+    
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const submitBtn = document.getElementById('submitBtn');
+        const passwordToggle = document.getElementById('passwordToggle');
+        const passwordInput = document.getElementById('password');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const orcaImage = document.getElementById('orcaImage');
+        
+        // Password reveal with sonar ping
+        passwordToggle.addEventListener('click', function() {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            this.classList.toggle('active', isPassword);
+            
+            // Sonar ping animation
+            this.classList.add('ping');
+            setTimeout(() => this.classList.remove('ping'), 500);
+        });
+        
+        // Form submission
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            // Clear previous errors
+            errorMessage.classList.remove('show');
+            document.querySelectorAll('.input-field').forEach(field => {
+                field.classList.remove('error');
+            });
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Authorizing...';
+            
+            // Trigger orca dive and loading overlay
+            orcaImage.classList.add('orca-dive');
+            setTimeout(() => {
+                loadingOverlay.classList.add('active');
+            }, 300);
+            
+            try {
+                const csrfToken = window.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content;
+                const headers = { 'Content-Type': 'application/json' };
+                if (csrfToken) {
+                    headers['X-CSRF-Token'] = csrfToken;
+                }
+                
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ username, password, csrf_token: csrfToken })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // Success - fade out loading and redirect
+                    setTimeout(() => {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const next = urlParams.get('next') || '/';
+                        window.location.href = next;
+                    }, 1500);
+                } else {
+                    // Error - restore UI
+                    loadingOverlay.classList.remove('active');
+                    orcaImage.classList.remove('orca-dive');
+                    orcaImage.style.animation = 'eye-dim 0.5s ease-out';
+                    setTimeout(() => {
+                        orcaImage.style.animation = '';
+                    }, 500);
+                    
+                    errorMessage.textContent = data.error || 'Access denied. Authorization required.';
+                    errorMessage.classList.add('show');
+                    
+                    document.getElementById('username').classList.add('error');
+                    document.getElementById('password').classList.add('error');
+                    
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Enter the Depths';
+                }
+            } catch (error) {
+                // Network error
+                loadingOverlay.classList.remove('active');
+                orcaImage.classList.remove('orca-dive');
+                
+                errorMessage.textContent = 'Network error. Please try again.';
+                errorMessage.classList.add('show');
+                
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Enter the Depths';
+            }
+        });
+        
+        // Add eye dim animation for failed login
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes eye-dim {
+                0% { filter: brightness(1); }
+                50% { filter: brightness(0.6); }
+                100% { filter: brightness(1); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>

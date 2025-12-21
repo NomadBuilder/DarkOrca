@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Glossary - DarkOrca</title>
+    <link rel="icon" type="image/png" href="/static/DarkOrca.png">
+    <link rel="alternate icon" href="/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --bg: #05060b;
+            --bg-alt: #0b0d16;
+            --panel: #111827;
+            --accent: #ff6b6b;
+            --accent-soft: rgba(255, 107, 107, 0.18);
+            --border-soft: rgba(255, 255, 255, 0.08);
+            --text-main: #f2f3f5;
+            --text-muted: #9aa0a6;
+            --text-soft: #6b7280;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        body {
+            background: var(--bg);
+            background-size: cover;
+            color: var(--text-main);
+            min-height: 100vh;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at top, #141825 0, #020308 60%);
+            z-index: 0;
+            pointer-events: none;
+        }
+        
+        body > * {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .glossary-card {
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .glossary-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.1);
+        }
+        
+        .category-badge {
+            display: inline-block;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        
+        .term-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+        
+        .term-definition {
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+        
+        .term-example {
+            background: rgba(255, 107, 107, 0.08);
+            border-left: 3px solid var(--accent);
+            padding: 0.75rem;
+            border-radius: 4px;
+            color: var(--text-main);
+            font-size: 0.9rem;
+            margin-top: 0.75rem;
+        }
+        
+        .term-example strong {
+            color: var(--accent);
+            font-weight: 600;
+        }
+        
+        /* Header */
+        header {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(16px);
+            border-bottom: none;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        /* Default: Hide mobile menu toggle, show desktop nav */
+        .mobile-menu-toggle {
+            display: none;
+        }
+        
+        .desktop-nav {
+            display: flex;
+        }
+        
+        /* Hide mobile nav on desktop by default */
+        .mobile-nav {
+            display: none;
+        }
+        
+        .mobile-nav-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1999;
+            backdrop-filter: blur(4px);
+        }
+        
+        .mobile-nav-overlay.open {
+            display: block;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .card {
+                padding: 1rem !important;
+            }
+            
+            h1 {
+                font-size: 1.5rem !important;
+            }
+            
+            .container {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+            
+            header img {
+                height: 70px !important;
+            }
+            
+            /* Glossary search and filters - stack on mobile */
+            .glossary-filters {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            
+            .glossary-filters > * {
+                width: 100%;
+            }
+            
+            /* Mobile navigation */
+            .mobile-menu-toggle {
+                display: block !important;
+                background: none;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: var(--text-main);
+                padding: 0.5rem 0.75rem;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1.25rem;
+                transition: all 0.2s ease;
+            }
+            
+            .mobile-menu-toggle:hover {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            
+            .desktop-nav {
+                display: none !important;
+            }
+            
+            .mobile-nav {
+                display: block;
+                position: fixed;
+                top: 0;
+                right: -100%;
+                width: 280px;
+                height: 100vh;
+                background: rgba(10, 15, 20, 0.98);
+                backdrop-filter: blur(20px);
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 2rem 1.5rem;
+                z-index: 2000;
+                transition: right 0.3s ease;
+                overflow-y: auto;
+            }
+            
+            .mobile-nav.open {
+                right: 0;
+            }
+            
+            .mobile-nav a {
+                display: block;
+                padding: 1rem;
+                margin-bottom: 0.5rem;
+                color: var(--text-main);
+                text-decoration: none;
+                border-radius: 8px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                transition: all 0.2s;
+            }
+            
+            .mobile-nav a:hover, .mobile-nav a:active {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 107, 107, 0.3);
+                color: var(--accent);
+            }
+        }
+        
+        @media (max-width: 640px) {
+            header img {
+                height: 60px !important;
+            }
+            
+            .card {
+                padding: 0.875rem !important;
+            }
+        }
+        
+        .search-input {
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            color: var(--text-main);
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            width: 100%;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        
+        .category-filter {
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            color: var(--text-main);
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .category-filter:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        .category-btn {
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0.25rem;
+            display: inline-block;
+        }
+        
+        .category-btn:hover {
+            border-color: var(--accent);
+            color: var(--text-main);
+        }
+        
+        .category-btn.active {
+            background: var(--accent-soft);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            transition: color 0.2s;
+        }
+        
+        .back-link:hover {
+            color: #ff8e8e;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .card {
+                padding: 1rem !important;
+            }
+            
+            h1 {
+                font-size: 1.5rem !important;
+            }
+            
+            .container {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+            
+            header img {
+                height: 70px !important;
+            }
+            
+            /* Glossary search and filters - stack on mobile */
+            .glossary-filters {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            
+            .glossary-filters > * {
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 640px) {
+            header img {
+                height: 60px !important;
+            }
+            
+            .card {
+                padding: 0.875rem !important;
+            }
+        }
+    </style>
+    {% if csrf_token %}
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <script>
+        window.csrfToken = '{{ csrf_token }}';
+    </script>
+    {% endif %}
+</head>
+<body>
+    <!-- Header -->
+    <header class="py-4">
+        <div class="container mx-auto px-6 max-w-7xl flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <a href="/">
+                    <img src="/static/DarkOrca.png" alt="DarkOrca Logo" style="height: 110px; width: auto;">
+                </a>
+            </div>
+            <div class="flex items-center space-x-6">
+                <a href="/" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Home
+                </a>
+                <a href="/glossary" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Glossary
+                </a>
+                <a href="/faq" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    FAQ
+                </a>
+                <a href="/about" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    About
+                </a>
+                {% if user %}
+                <a href="/profile" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Profile
+                </a>
+                <a href="/logout" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Logout
+                </a>
+                {% else %}
+                <a href="/login" class="hover:underline" style="color: var(--text-muted); font-size: 1rem; transition: color 0.2s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+                    Login
+                </a>
+                {% endif %}
+            </div>
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" onclick="toggleMobileNav()" aria-label="Toggle menu">
+                <i class="fas fa-bars" id="mobileMenuIcon"></i>
+            </button>
+        </div>
+    </header>
+    
+    <!-- Mobile Navigation Menu -->
+    <nav class="mobile-nav" id="mobileNav">
+        <div class="flex items-center justify-between mb-6">
+            <h3 style="color: var(--text-main); font-size: 1.25rem; font-weight: 600;">Menu</h3>
+            <button onclick="closeMobileNav()" style="background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <a href="/" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Home
+        </a>
+        <a href="/glossary" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Glossary
+        </a>
+        <a href="/faq" onclick="closeMobileNav()" style="font-size: 1rem;">
+            FAQ
+        </a>
+        <a href="/about" onclick="closeMobileNav()" style="font-size: 1rem;">
+            About
+        </a>
+        {% if user %}
+        <a href="/profile" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Profile
+        </a>
+        <a href="/logout" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Logout
+        </a>
+        {% else %}
+        <a href="/login" onclick="closeMobileNav()" style="font-size: 1rem;">
+            Login
+        </a>
+        {% endif %}
+    </nav>
+    
+    <script>
+        function toggleMobileNav() {
+            const nav = document.getElementById('mobileNav');
+            const overlay = document.getElementById('mobileNavOverlay');
+            const icon = document.getElementById('mobileMenuIcon');
+            
+            nav.classList.toggle('open');
+            overlay.classList.toggle('open');
+            icon.classList.toggle('fa-bars');
+            icon.classList.toggle('fa-times');
+        }
+        
+        function closeMobileNav() {
+            const nav = document.getElementById('mobileNav');
+            const overlay = document.getElementById('mobileNavOverlay');
+            const icon = document.getElementById('mobileMenuIcon');
+            
+            nav.classList.remove('open');
+            overlay.classList.remove('open');
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
+        }
+        
+        // Ensure mobile nav is closed on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            closeMobileNav();
+        });
+    </script>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-6 py-8 max-w-7xl">
+        <a href="/" class="back-link">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to Scanner</span>
+        </a>
+
+        <div class="mb-8">
+            <h2 class="text-3xl font-bold mb-2" style="color: var(--text-main);">Security Glossary</h2>
+            <p class="text-lg" style="color: var(--text-muted);">
+                Comprehensive definitions of security terms, vulnerabilities, and concepts used throughout DarkOrca
+            </p>
+        </div>
+
+        <!-- Search and Filters -->
+        <div class="mb-6">
+            <form method="GET" action="/glossary" id="glossaryForm" class="mb-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="md:col-span-3">
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                name="search" 
+                                id="searchInput"
+                                class="search-input pl-10" 
+                                placeholder="Search terms, definitions, or examples..."
+                                value="{{ search_query }}"
+                            >
+                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2" style="color: var(--text-muted);"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <select name="category" id="categoryFilter" class="category-filter">
+                            <option value="">All Categories</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Category Quick Filters -->
+            <div class="flex flex-wrap items-center">
+                <span class="text-sm mr-3" style="color: var(--text-muted);">Quick filter:</span>
+                <a href="/glossary" class="category-btn {% if not current_category %}active{% endif %}">
+                    All
+                </a>
+                {% for cat in categories %}
+                <a href="/glossary?category={{ cat }}" class="category-btn {% if current_category == cat %}active{% endif %}">
+                    {{ cat }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Results Count -->
+        <div class="mb-4">
+            <p class="text-sm" style="color: var(--text-muted);">
+                <strong style="color: var(--text-main);">{{ terms|length }}</strong> term{{ 's' if terms|length != 1 else '' }} found
+                {% if current_category %}
+                in <strong style="color: var(--text-main);">{{ current_category }}</strong>
+                {% endif %}
+                {% if search_query %}
+                matching "<strong style="color: var(--text-main);">{{ search_query }}</strong>"
+                {% endif %}
+            </p>
+        </div>
+
+        <!-- Glossary Terms -->
+        <div id="glossaryTerms">
+            {% if terms %}
+                {% for term in terms %}
+                <div class="glossary-card">
+                    <span class="category-badge">{{ term.category }}</span>
+                    <h3 class="term-title">{{ term.term }}</h3>
+                    <p class="term-definition">{{ term.definition }}</p>
+                    {% if term.example %}
+                    <div class="term-example">
+                        <strong>Example:</strong> {{ term.example }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="glossary-card text-center">
+                    <i class="fas fa-search text-4xl mb-4" style="color: var(--text-muted);"></i>
+                    <h3 class="term-title mb-2">No terms found</h3>
+                    <p class="term-definition">
+                        Try adjusting your search query or category filter to find what you're looking for.
+                    </p>
+                </div>
+            {% endif %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-8 py-4 border-t" style="border-color: var(--border-soft); background: rgba(0, 0, 0, 0.2);">
+        <div class="container mx-auto px-6 max-w-7xl">
+            <div class="text-center">
+                <p class="text-sm" style="color: var(--text-muted);">
+                    DarkOrca is part of 
+                    <a href="https://darkai.ca/" target="_blank" rel="noopener noreferrer" 
+                       style="color: var(--accent); text-decoration: none; font-weight: 600;">Dark AI</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Auto-submit form on search input change (with debounce)
+        let searchTimeout;
+        const searchInput = document.getElementById('searchInput');
+        const categoryFilter = document.getElementById('categoryFilter');
+        
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                document.getElementById('glossaryForm').submit();
+            }, 500);
+        });
+        
+        // Submit form on category change
+        categoryFilter.addEventListener('change', function() {
+            document.getElementById('glossaryForm').submit();
+        });
+        
+        // Highlight search terms in results
+        const searchQuery = '{{ search_query }}';
+        if (searchQuery) {
+            const terms = document.querySelectorAll('.term-title, .term-definition, .term-example');
+            terms.forEach(term => {
+                const regex = new RegExp(`(${searchQuery})`, 'gi');
+                term.innerHTML = term.innerHTML.replace(regex, '<mark style="background: var(--accent-soft); color: var(--accent); padding: 0.1rem 0.2rem; border-radius: 3px;">$1</mark>');
+            });
+        }
+    </script>
+</body>
+</html>

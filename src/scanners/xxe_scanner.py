@@ -9,6 +9,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.evidence_collector import EvidenceCollector
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,12 @@ class XXEScanner(BaseScanner):
             enabled=enabled,
             scan_mode=scan_mode
         )
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Content-Type': 'application/xml'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
+        # Set default Content-Type for XXE testing (can be overridden per request)
+        if 'Content-Type' not in self.session.headers:
+            self.session.headers['Content-Type'] = 'application/xml'
     
     def scan(self, target: ScanTarget) -> List[Finding]:
         """Test for XXE vulnerabilities."""

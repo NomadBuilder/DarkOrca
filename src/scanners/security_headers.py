@@ -98,12 +98,17 @@ class SecurityHeadersAnalyzer(BaseScanner):
         
         try:
             # Make request to get headers
+            # Use stealth headers to avoid identification
+            from ..utils.opsec import UserAgentRotator, HeaderNormalizer
+            headers = HeaderNormalizer.get_clean_headers()
+            headers['User-Agent'] = UserAgentRotator.get_default()
+            
             response = requests.get(
                 target.url,
                 timeout=10,
                 allow_redirects=True,
                 verify=False,  # Don't verify SSL for header checking
-                headers={'User-Agent': 'SecurityScan/1.0'}
+                headers=headers
             )
             
             headers = response.headers

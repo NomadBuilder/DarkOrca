@@ -26,11 +26,9 @@ class RateLimitingAnalyzer(BaseScanner):
             enabled=enabled,
             scan_mode=scan_mode
         )
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
     
     def scan(self, target: ScanTarget) -> List[Finding]:
         """Analyze rate limiting."""

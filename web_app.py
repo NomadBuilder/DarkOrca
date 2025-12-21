@@ -1,4 +1,4 @@
-"""Modern web UI for SecurityScan."""
+"""Modern web UI for DarkOrca."""
 
 import os
 import json
@@ -7,11 +7,28 @@ import threading
 import hashlib
 import uuid
 import re
+import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from flask import Flask, render_template, request, jsonify, send_from_directory, abort, Response
+from flask import Flask, render_template, request, jsonify, send_from_directory, abort, Response, redirect, url_for
 from flask_cors import CORS
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    FLASK_LIMITER_AVAILABLE = True
+except ImportError:
+    FLASK_LIMITER_AVAILABLE = False
+    # Create dummy limiter decorator if not available
+    class Limiter:
+        def __init__(self, *args, **kwargs):
+            pass
+        def limit(self, *args, **kwargs):
+            def decorator(f):
+                return f
+            return decorator
+    def get_remote_address():
+        return '127.0.0.1'
 
 # Load environment variables from .env file (same as DarkAI-consolidated)
 try:
@@ -22,12 +39,52 @@ except ImportError:
 
 from src.orchestrator import ScanOrchestrator
 from src.models.scan_mode import ScanMode
+from src.utils.glossary import Glossary
+from src.utils.validators import validate_url, validate_email, sanitize_input, validate_scan_id
+from src.utils.config_validator import ConfigValidator
+from src.utils.config import Config
+from src.utils.database import init_database, User, SavedScan, UserSession
+from src.utils.auth import get_current_user, require_auth, login_user, logout_user
+from src.utils.csrf import generate_csrf_token, require_csrf
 
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', secrets.token_urlsafe(32))  # Required for sessions
+
+# Secure session configuration
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'  # True in production (HTTPS)
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days
+
 CORS(app)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Add security headers to all responses
+from src.utils.security_headers import add_security_headers
+app.after_request(add_security_headers)
+
+# Rate limiting
+if FLASK_LIMITER_AVAILABLE:
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per hour", "50 per minute"],
+        storage_uri="memory://"  # In-memory storage (use Redis for production)
+    )
+else:
+    # Dummy limiter class if flask-limiter not installed
+    class DummyLimiter:
+        def limit(self, *args, **kwargs):
+            def decorator(f):
+                return f
+            return decorator
+    limiter = DummyLimiter()
+
+# Configure structured logging
+from src.utils.logging_config import setup_logging
+log_format = os.getenv('LOG_FORMAT', 'human')  # 'human' or 'json'
+log_level = os.getenv('LOG_LEVEL', 'INFO')
+log_file = os.getenv('LOG_FILE', None)  # Optional log file path
+setup_logging(level=log_level, format_type=log_format, include_location=False, log_file=log_file)
 logger = logging.getLogger(__name__)
 
 # Store active scans and results
@@ -37,10 +94,11 @@ scan_results = {}
 # Keep completed scans for at least 1 hour for status checks
 MAX_SCAN_AGE_HOURS = 1
 
-# Persistent storage for shareable results
-RESULTS_DIR = Path('scan_results')
-RESULTS_DIR.mkdir(exist_ok=True)
-RESULTS_EXPIRY_DAYS = 30  # Results expire after 30 days
+# Concurrent scan limits
+MAX_CONCURRENT_SCANS = int(os.getenv('MAX_CONCURRENT_SCANS', '5'))
+current_concurrent_scans = 0
+scan_queue = []
+scan_lock = threading.Lock()  # Lock for thread-safe access to concurrent scan counter
 
 # Persistent storage for shareable results
 RESULTS_DIR = Path('scan_results')
@@ -51,25 +109,369 @@ RESULTS_EXPIRY_DAYS = 30  # Results expire after 30 days
 @app.route('/')
 def index():
     """Main dashboard."""
-    return render_template('index.html')
+    from flask import session
+    session.permanent = True  # Ensure session persists
+    user = get_current_user()
+    csrf_token = generate_csrf_token()  # Generate CSRF token for forms
+    return render_template('index.html', user=user, csrf_token=csrf_token)
+
+
+# Authentication routes
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page and handler."""
+    if request.method == 'GET':
+        csrf_token = generate_csrf_token()
+        return render_template('login.html', csrf_token=csrf_token)
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        if not username or not password:
+            return jsonify({'error': 'Username and password are required'}), 400
+        
+        user = User.authenticate(username, password)
+        if user:
+            login_user(user)
+            return jsonify({
+                'success': True,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email
+                }
+            })
+        else:
+            # Generic error message to prevent username enumeration
+            # Same message regardless of whether username exists or password is wrong
+            return jsonify({'error': 'Authentication failed'}), 401
+    
+    # GET request - show login page
+    return render_template('login.html')
+
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    """Signup page and handler."""
+    if request.method == 'GET':
+        csrf_token = generate_csrf_token()
+        return render_template('signup.html', csrf_token=csrf_token)
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
+        
+        # Validate input
+        if not username or not email or not password:
+            return jsonify({'error': 'Username, email, and password are required'}), 400
+        
+        if len(username) < 3:
+            return jsonify({'error': 'Username must be at least 3 characters'}), 400
+        
+        if len(password) < 6:
+            return jsonify({'error': 'Password must be at least 6 characters'}), 400
+        
+        # Validate email
+        is_valid, error_msg = validate_email(email)
+        if not is_valid:
+            return jsonify({'error': f'Invalid email: {error_msg}'}), 400
+        
+        try:
+            user = User.create(username, email, password)
+            login_user(user)
+            
+            # Send welcome email (non-blocking - don't fail registration if email fails)
+            try:
+                from src.utils.email_sender import get_email_sender
+                email_sender = get_email_sender()
+                if email_sender.is_enabled():
+                    email_sender.send_welcome_email(email, username)
+            except Exception as e:
+                logger.warning(f"Failed to send welcome email to {email}: {e}", exc_info=True)
+                # Don't fail registration if email fails
+            
+            return jsonify({
+                'success': True,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email
+                }
+            })
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+
+@app.route('/logout', methods=['GET', 'POST'])
+def logout():
+    """Logout handler."""
+    logout_user()
+    if request.method == 'POST':
+        return jsonify({'success': True})
+    # For GET requests, redirect to home
+    return redirect(url_for('index'))
+
+
+@app.route('/profile')
+@require_auth
+def profile():
+    """User profile/settings page."""
+    user = get_current_user()
+    csrf_token = generate_csrf_token()
+    return render_template('profile.html', user=user, csrf_token=csrf_token)
+
+
+# Saved scans API routes
+@app.route('/api/profile/saved-scans', methods=['GET'])
+@require_auth
+def get_saved_scans():
+    """Get user's saved scans."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    limit = request.args.get('limit', 50, type=int)
+    offset = request.args.get('offset', 0, type=int)
+    
+    saved_scans = SavedScan.get_user_scans(user.id, limit=limit, offset=offset)
+    
+    return jsonify({
+        'scans': [scan.to_dict() for scan in saved_scans],
+        'count': len(saved_scans)
+    })
+
+
+@app.route('/api/profile/saved-scans/<int:saved_scan_id>', methods=['GET'])
+@require_auth
+def get_saved_scan(saved_scan_id):
+    """Get a specific saved scan."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    saved_scan = SavedScan.get_by_id(saved_scan_id, user.id)
+    if not saved_scan:
+        return jsonify({'error': 'Saved scan not found'}), 404
+    
+    return jsonify(saved_scan.to_dict())
+
+
+@app.route('/api/profile/saved-scans/<int:saved_scan_id>', methods=['DELETE'])
+@require_auth
+@require_csrf
+def delete_saved_scan(saved_scan_id):
+    """Delete a saved scan."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    success = SavedScan.delete(saved_scan_id, user.id)
+    if success:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': 'Saved scan not found'}), 404
+
+
+@app.route('/api/profile/save-scan', methods=['POST'])
+@require_auth
+@require_csrf
+def save_scan():
+    """Save a scan result to user's profile."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    data = request.get_json()
+    scan_id = data.get('scan_id')
+    if not scan_id:
+        return jsonify({'error': 'scan_id is required'}), 400
+    
+    # Get scan result from scan_results or shareable results
+    result_dict = None
+    target = None
+    scan_mode = None
+    target_url = None
+    shareable_id = None
+    
+    if scan_id in scan_results:
+        result_dict = scan_results[scan_id]
+        target = result_dict.get('target', '')
+        scan_mode = result_dict.get('scan_mode', 'DEFENSIVE')
+        target_url = result_dict.get('target_url', target)
+        shareable_id = result_dict.get('shareable_id')
+    else:
+        # Try to load from shareable results
+        shareable_id = data.get('shareable_id')
+        if shareable_id:
+            result_data = _load_shareable_result(shareable_id)
+            if result_data:
+                result_dict = result_data.get('results')
+                target = result_data.get('target', '')
+                scan_mode = result_data.get('scan_mode', 'DEFENSIVE')
+                target_url = target
+    
+    if not result_dict:
+        return jsonify({'error': 'Scan results not found'}), 404
+    
+    # Extract target URL from result_dict if available
+    if not target_url and 'target' in result_dict:
+        target_obj = result_dict['target']
+        if isinstance(target_obj, dict):
+            target_url = target_obj.get('url', target)
+        else:
+            target_url = str(target_obj)
+    
+    try:
+        saved_scan = SavedScan.save(
+            user_id=user.id,
+            scan_id=scan_id,
+            shareable_id=shareable_id,
+            target=target,
+            scan_mode=scan_mode,
+            target_url=target_url,
+            result_data=result_dict
+        )
+        return jsonify({
+            'success': True,
+            'saved_scan': saved_scan.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Error saving scan: {e}", exc_info=True)
+        return jsonify({'error': f'Failed to save scan: {str(e)}'}), 500
+
+
+@app.route('/api/profile/settings', methods=['GET', 'PUT'])
+@require_auth
+def user_settings():
+    """Get or update user settings."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    if request.method == 'GET':
+        return jsonify({
+            'settings': user.settings,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'created_at': user.created_at
+            }
+        })
+    
+    # PUT request - update settings
+    if request.method == 'PUT':
+        # CSRF protection for PUT requests
+        from src.utils.csrf import validate_csrf_token
+        if not validate_csrf_token():
+            return jsonify({'error': 'CSRF token missing or invalid'}), 403
+    
+    data = request.get_json()
+    new_settings = data.get('settings', {})
+    
+    if not isinstance(new_settings, dict):
+        return jsonify({'error': 'Settings must be an object'}), 400
+    
+    user.update_settings(new_settings)
+    return jsonify({
+        'success': True,
+        'settings': user.settings
+    })
 
 
 @app.route('/static/<path:filename>')
 def static_files(filename):
-    """Serve static files."""
+    """Serve static files with path traversal protection."""
+    from src.utils.validators import validate_path_traversal_safe
+    
+    # Validate filename doesn't contain path traversal
+    is_valid, error_msg = validate_path_traversal_safe(filename, 'static')
+    if not is_valid:
+        abort(400, description=f"Invalid file path: {error_msg}")
+    
     return send_from_directory('static', filename)
 
 
 @app.route('/favicon.ico')
 def favicon():
     """Serve favicon."""
-    return send_from_directory('static', 'favicon.svg', mimetype='image/svg+xml')
+    return send_from_directory('static', 'DarkOrca.png', mimetype='image/png')
+
+
+@app.route('/glossary')
+def glossary():
+    """Serve glossary page."""
+    category = request.args.get('category', '')
+    search = request.args.get('search', '')
+    
+    terms = Glossary.search_terms(search, category if category else None)
+    categories = Glossary.get_categories()
+    user = get_current_user()
+    csrf_token = generate_csrf_token()
+    
+    return render_template('glossary.html', terms=terms, categories=categories,
+                         current_category=category, search_query=search, user=user, csrf_token=csrf_token)
+
+
+@app.route('/about')
+def about():
+    """Serve about page."""
+    return render_template('about.html')
+
+
+@app.route('/faq')
+def faq():
+    """Serve FAQ page."""
+    user = get_current_user()
+    csrf_token = generate_csrf_token()
+    return render_template('faq.html', user=user, csrf_token=csrf_token)
+
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for monitoring."""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.utcnow().isoformat(),
+        'version': '1.0.0',
+        'concurrent_scans': current_concurrent_scans,
+        'max_concurrent_scans': MAX_CONCURRENT_SCANS,
+        'active_scans_count': len(active_scans),
+        'queue_length': len(scan_queue),
+    }), 200
+
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Handle rate limit errors."""
+    return jsonify({
+        'error': 'Rate limit exceeded. Please try again later.',
+        'message': str(e.description)
+    }), 429
 
 
 @app.route('/api/scan', methods=['POST'])
+@limiter.limit(f"{Config.RATE_LIMIT_SCANS_PER_MINUTE} per minute")  # Rate limit: configurable scans per minute per IP
+@require_csrf  # CSRF protection for scan initiation
 def start_scan():
     """Start a new scan."""
+    global current_concurrent_scans
+    
+    # Check concurrent scan limit
+    if current_concurrent_scans >= MAX_CONCURRENT_SCANS:
+        return jsonify({
+            'error': f'Maximum concurrent scans ({MAX_CONCURRENT_SCANS}) reached. Please try again later.',
+            'queue_position': len(scan_queue) + 1
+        }), 429  # Too Many Requests
+    
     data = request.json
+    if not data:
+        return jsonify({'error': 'Request body is required'}), 400
+    
     target = data.get('target')
     scan_mode = data.get('scan_mode', 'defensive')
     email = data.get('email', '').strip()  # Optional email for notifications
@@ -79,8 +481,26 @@ def start_scan():
     enable_nmap = data.get('enable_nmap', True)
     exhaustive = data.get('exhaustive', False)  # Exhaustive mode (slower but more thorough)
     
+    # Validate target URL
     if not target:
         return jsonify({'error': 'Target URL is required'}), 400
+    
+    # Sanitize and validate target
+    target = sanitize_input(str(target), max_length=2048)
+    is_valid, error_msg = validate_url(target, require_scheme=False)
+    if not is_valid:
+        return jsonify({'error': f'Invalid target URL: {error_msg}'}), 400
+    
+    # Validate email if provided
+    if email:
+        email = sanitize_input(email, max_length=254)
+        is_valid, error_msg = validate_email(email)
+        if not is_valid:
+            return jsonify({'error': f'Invalid email address: {error_msg}'}), 400
+    
+    # Validate scan_mode
+    if scan_mode not in ['defensive', 'offensive', 'comprehensive']:
+        return jsonify({'error': 'Invalid scan_mode. Must be defensive, offensive, or comprehensive'}), 400
     
     # Generate scan ID
     scan_id = f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -132,8 +552,15 @@ def start_scan():
     # Start scan in background thread
     def run_scan():
         """Run scan in background thread with comprehensive error handling."""
-        logger.info(f"Scan thread started for {scan_id}, target: {target}, mode: {scan_mode}")
+        global current_concurrent_scans
+        
+        # Increment concurrent scan counter
+        with scan_lock:
+            current_concurrent_scans += 1
+            logger.info(f"Scan {scan_id} started. Concurrent scans: {current_concurrent_scans}/{MAX_CONCURRENT_SCANS}")
+        
         try:
+            logger.info(f"Scan thread started for {scan_id}, target: {target}, mode: {scan_mode}")
             if scan_mode == 'comprehensive':
                 # Comprehensive mode: Run both defensive and offensive
                 start_time = datetime.now()
@@ -397,9 +824,13 @@ def start_scan():
             _save_shareable_result(shareable_id, result_dict, target, scan_mode)
             logger.info(f"Results saved with shareable ID: {shareable_id}")
             
-            # Add shareable_id to result_dict for frontend
+            # Add shareable_id and other metadata to result_dict for frontend
             result_dict['shareable_id'] = shareable_id
             result_dict['shareable_url'] = f"/results/{shareable_id}"
+            result_dict['scan_id'] = scan_id  # Add scan_id for saving to profile
+            result_dict['target_url'] = target  # Add target_url for saving
+            result_dict['scan_id'] = scan_id  # Add scan_id for saving to profile
+            result_dict['target_url'] = target  # Add target_url for saving
             
             # Send email notification if email provided
             email = active_scans[scan_id].get('email', '')
@@ -488,11 +919,23 @@ def start_scan():
             except Exception as save_error:
                 logger.error(f"Failed to save partial results: {save_error}")
             
-            active_scans[scan_id] = {
-                'status': 'error',
-                'error': str(e),
-                'completed_at': datetime.now().isoformat(),
-            }
+            if scan_id in active_scans:
+                active_scans[scan_id].update({
+                    'status': 'error',
+                    'error': str(e),
+                    'completed_at': datetime.now().isoformat(),
+                })
+            else:
+                active_scans[scan_id] = {
+                    'status': 'error',
+                    'error': str(e),
+                    'completed_at': datetime.now().isoformat(),
+                }
+        finally:
+            # Always decrement concurrent scan counter when scan completes or fails
+            with scan_lock:
+                current_concurrent_scans = max(0, current_concurrent_scans - 1)
+                logger.info(f"Scan {scan_id} finished. Concurrent scans: {current_concurrent_scans}/{MAX_CONCURRENT_SCANS}")
     
     thread = threading.Thread(target=run_scan, name=f"scan-{scan_id}")
     thread.daemon = True
@@ -748,7 +1191,7 @@ def view_shareable_results(shareable_id):
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Results Not Found - SecurityScan</title>
+            <title>Results Not Found - DarkOrca</title>
             <style>
                 body {{ font-family: system-ui; background: #05060b; color: #f2f3f5; text-align: center; padding: 50px; }}
                 h1 {{ color: #ff6b6b; }}
@@ -757,7 +1200,7 @@ def view_shareable_results(shareable_id):
         <body>
             <h1>Results Not Found</h1>
             <p>The scan results you are looking for do not exist or have expired.</p>
-            <p><a href="/" style="color: #ff6b6b;">Return to SecurityScan</a></p>
+            <p><a href="/" style="color: #ff6b6b;">Return to DarkOrca</a></p>
         </body>
         </html>
         """, 404
@@ -869,7 +1312,7 @@ def download_scan_pdf(scan_id):
         
         # Generate filename
         target_url = target.url.replace('https://', '').replace('http://', '').replace('/', '_')
-        filename = f"securityscan_{target_url}_{scan_id}.pdf"
+        filename = f"darkorca_{target_url}_{scan_id}.pdf"
         
         return Response(
             pdf_buffer.read(),
@@ -977,7 +1420,7 @@ def download_shareable_pdf(shareable_id):
         
         # Generate filename
         target_url = target.url.replace('https://', '').replace('http://', '').replace('/', '_')
-        filename = f"securityscan_{target_url}_{shareable_id}.pdf"
+        filename = f"darkorca_{target_url}_{shareable_id}.pdf"
         
         return Response(
             pdf_buffer.read(),
@@ -992,13 +1435,44 @@ def download_shareable_pdf(shareable_id):
         return jsonify({'error': f'Failed to generate PDF: {str(e)}'}), 500
 
 
+# Initialize database on startup
+init_database()
+logger.info("Database initialized")
+
 if __name__ == '__main__':
+    # Initialize database
+    init_database()
+    
+    # Validate configuration on startup
+    is_valid, errors = ConfigValidator.validate_config()
+    if not is_valid:
+        logger.error("Configuration validation failed:")
+        for error in errors:
+            logger.error(f"  - {error}")
+        logger.error("Please fix configuration errors before starting the application.")
+        exit(1)
+    
+    # Validate Config class values
+    config_valid, config_errors = Config.validate_config()
+    if not config_valid:
+        logger.error("Config class validation failed:")
+        for error in config_errors:
+            logger.error(f"  - {error}")
+        logger.error("Please fix configuration errors before starting the application.")
+        exit(1)
+    
+    # Log configuration summary
+    ConfigValidator.log_config_summary()
+    logger.info(f"Request timeout: {Config.DEFAULT_REQUEST_TIMEOUT}s (connect: {Config.DEFAULT_CONNECT_TIMEOUT}s, read: {Config.DEFAULT_READ_TIMEOUT}s)")
+    logger.info(f"Max scan duration: {Config.MAX_SCAN_DURATION}s")
+    
     port = int(os.getenv('PORT', 5001))
     print(f"\n{'='*60}")
-    print(f"🚀 SecurityScan Web UI Starting...")
+    print(f"🚀 DarkOrca Web UI Starting...")
     print(f"{'='*60}")
     print(f"📍 Web interface: http://localhost:{port}")
     print(f"🌐 Network access: http://0.0.0.0:{port}")
+    print(f"💚 Health check: http://localhost:{port}/health")
     print(f"{'='*60}\n")
     app.run(debug=True, host='0.0.0.0', port=port)
 

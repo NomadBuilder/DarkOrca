@@ -10,6 +10,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.evidence_collector import EvidenceCollector
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +26,9 @@ class SSRFScanner(BaseScanner):
             enabled=enabled,
             scan_mode=scan_mode
         )
-        self.session = requests.Session()
-        self.session.verify = False
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        # Use OPSEC-enabled session helper
+        from ..utils.scanner_session import create_scanner_session
+        self.session = create_scanner_session()
     
     def scan(self, target: ScanTarget) -> List[Finding]:
         """Test for SSRF vulnerabilities."""
@@ -55,6 +54,7 @@ class SSRFScanner(BaseScanner):
             findings.extend(self._test_ssrf(target.url, params))
             findings.extend(self._test_ssrf_webhooks(target.url))
             findings.extend(self._test_ssrf_file_protocols(target.url, params))
+            # Note: Cloud metadata and internal scanning tests are integrated into _test_ssrf
             
         except Exception as e:
             logger.error(f"SSRF scanning failed: {e}", exc_info=True)
@@ -180,6 +180,15 @@ class SSRFScanner(BaseScanner):
                         
                         exploitation_details = f"Parameter '{param}' accepted URL '{test_url}'. " + "; ".join(evidence_parts) + f". Status code: {response.status_code}."
                         
+                        # Collect evidence
+                        evidence_data = EvidenceCollector.collect_request_response(
+                            response,
+                            request_url=f"{base_url}?{param}={quote(test_url)}",
+                            request_method="GET"
+                        )
+                        evidence_str = EvidenceCollector.format_evidence_string(evidence_data)
+                        evidence_str += f"\nTiming: {elapsed_time:.2f}s (baseline: {baseline_time:.2f}s)"
+                        
                         findings.append(Finding(
                             title=f"SSRF Vulnerability Detected",
                             description=f"Parameter '{param}' appears to accept URLs and make server-side requests. Evidence: {', '.join(evidence_parts)}.",
@@ -187,7 +196,7 @@ class SSRFScanner(BaseScanner):
                             category=FindingCategory.VULNERABILITY,
                             source_scanner=self.name,
                             url=f"{base_url}?{param}={quote(test_url)}",
-                            evidence=f"Request: {base_url}?{param}={quote(test_url)}\nResponse: {response.status_code}, Time: {elapsed_time:.2f}s\nContent length: {len(response.text)}",
+                            evidence=evidence_str,
                             remediation=f"URGENT: Validate and whitelist allowed URLs for parameter '{param}'. Block internal IPs (127.0.0.1, localhost), private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), and metadata endpoints (169.254.169.254). Consider using a URL validation library.",
                             references=["https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"],
                             exploitation_details=exploitation_details,

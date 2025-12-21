@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Example usage of SecurityScan programmatically."""
+"""Example usage of DarkOrca programmatically."""
 
 import logging
 from src.orchestrator import ScanOrchestrator

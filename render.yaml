@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: darkorca-security-scanner
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 web_app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: darkorca-security-scanner
+          property: port
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_TIMEOUT_HOURS
+        value: "24"
+      - key: MAX_CONCURRENT_SCANS
+        value: "3"
+      # Optional: Uncomment and set if you want email notifications
+      # - key: RESEND_API_KEY
+      #   sync: false
+      # - key: FROM_EMAIL
+      #   value: your-email@domain.com
+      # Optional: Uncomment and set if you want AI analysis
+      # - key: OPENAI_API_KEY
+      #   sync: false
+      # - key: GEMINI_API_KEY
+      #   sync: false
+      # Optional: WPScan API token for vulnerability database access
+      # - key: WPSCAN_API_TOKEN
+      #   sync: false
+      # Optional: CORS origins (comma-separated, default: *)
+      # - key: CORS_ORIGINS
+      #   value: https://yourdomain.com,https://www.yourdomain.com

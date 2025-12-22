@@ -21,6 +21,9 @@ boto3>=1.28.0  # Optional - only needed if using AWS Bedrock
 # Resend API is called via requests library (already included)
 # python-dateutil>=2.8.0  # For date parsing (if needed)
 
+# Production WSGI server for deployment (Render, Heroku, etc.)
+gunicorn>=21.2.0
+
 # Note: This tool requires external scanners to be installed:
 # - WPScan: https://github.com/wpscanteam/wpscan
 # - Nuclei: https://github.com/projectdiscovery/nuclei

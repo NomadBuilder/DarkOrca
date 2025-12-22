@@ -1632,5 +1632,7 @@ if __name__ == '__main__':
     print(f"🌐 Network access: http://0.0.0.0:{port}")
     print(f"💚 Health check: http://localhost:{port}/health")
     print(f"{'='*60}\n")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    # Only run in debug mode if not in production
+    debug_mode = os.getenv('FLASK_ENV', 'development').lower() != 'production'
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
 

@@ -649,6 +649,7 @@ async function saveScanToProfile(shareableId = null) {
         const response = await fetch('/api/profile/save-scan', {
             method: 'POST',
             headers: headers,
+            credentials: 'same-origin',  // Include cookies (session cookie) with request
             body: JSON.stringify({
                 scan_id: scanId || 'shared_' + shareableIdToUse,  // Use scan_id if available, otherwise generate one for shared
                 shareable_id: shareableIdToUse,
@@ -836,6 +837,41 @@ function displayResults(results) {
     else if (level === 'medium') riskLevelEl.classList.add('text-yellow-600');
     else if (level === 'low') riskLevelEl.classList.add('text-blue-600');
     else riskLevelEl.classList.add('text-green-600');
+    
+    // Display AI Analysis if available
+    const aiAnalysisSection = document.getElementById('aiAnalysisSection');
+    const aiAnalysisContent = document.getElementById('aiAnalysisContent');
+    
+    console.log('AI Analysis check:', {
+        'ai_analysis exists': 'ai_analysis' in results,
+        'ai_analysis value': results.ai_analysis ? `${results.ai_analysis.substring(0, 50)}...` : null,
+        'ai_analysis length': results.ai_analysis ? results.ai_analysis.length : 0
+    });
+    
+    if (results.ai_analysis && results.ai_analysis.trim()) {
+        // Show AI analysis section
+        console.log('Showing AI Analysis section - analysis found');
+        if (aiAnalysisSection) {
+            aiAnalysisSection.classList.remove('hidden');
+            // Format the analysis text (preserve line breaks, convert to paragraphs)
+            const analysisText = results.ai_analysis.trim();
+            // Split by double newlines to create paragraphs
+            const paragraphs = analysisText.split(/\n\n+/).filter(p => p.trim());
+            if (aiAnalysisContent) {
+                aiAnalysisContent.innerHTML = paragraphs.map(p => 
+                    `<p style="margin-bottom: 1rem; line-height: 1.7; color: var(--text-main);">${p.trim().replace(/\n/g, '<br>')}</p>`
+                ).join('');
+            }
+        } else {
+            console.warn('aiAnalysisSection element not found in DOM');
+        }
+    } else {
+        // Hide AI analysis section if not available
+        console.log('Hiding AI Analysis section - no analysis found or empty');
+        if (aiAnalysisSection) {
+            aiAnalysisSection.classList.add('hidden');
+        }
+    }
     
     // Create visualizations
     createVisualizations(results, actionableFindings);
@@ -1130,7 +1166,7 @@ function createFindingCard(finding) {
                     <h4 class="font-semibold mb-1" style="color: #f2f3f5;">${escapeHtml(formatTitle(finding.title))}</h4>
                     <p class="text-sm mb-2 leading-relaxed whitespace-pre-line" style="color: #9aa0a6;">${escapeHtml(cleanDescription(finding.description))}</p>
                     <div class="flex flex-wrap gap-2 text-xs">
-                        <span class="px-2.5 py-1 rounded-md font-medium" style="background: rgba(255, 107, 107, 0.2); color: #ff8e8e; border: 1px solid rgba(255, 107, 107, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span>
+                        <span class="px-2.5 py-1 rounded-md font-medium" style="background: rgba(255, 107, 107, 0.2); color: #ff8e8e; border: 1px solid rgba(255, 107, 107, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span>
                         <span class="px-2.5 py-1 rounded-md font-medium" style="background: rgba(255, 255, 255, 0.1); color: #9aa0a6; border: 1px solid rgba(255, 255, 255, 0.08);">${escapeHtml(formatCategory(finding.category))}</span>
                         ${finding.url ? `<a href="${escapeHtml(finding.url)}" target="_blank" class="px-2.5 py-1 rounded-md font-medium transition-colors" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3);">View URL</a>` : ''}
                         ${finding.exploited ? '<span class="px-2.5 py-1 rounded-md font-semibold" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3);">⚠️ Exploited</span>' : ''}
@@ -1153,10 +1189,27 @@ function createFindingCard(finding) {
         ` : ''}
         ${finding.exploitation_details ? `
             <div class="mt-3 p-3 rounded" style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid rgba(239, 68, 68, 0.5);">
-                <div class="text-sm font-medium mb-1" style="color: #fca5a5;">
+                <div class="text-sm font-medium mb-2" style="color: #fca5a5;">
                     <i class="fas fa-bug mr-1"></i>Exploitation Details
                 </div>
-                <div class="text-sm" style="color: #fca5a5;">${escapeHtml(finding.exploitation_details)}</div>
+                ${finding.metadata && finding.metadata.execution_proven !== undefined ? `
+                    <div class="mb-2 p-2 rounded" style="background: ${finding.metadata.execution_proven ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)'}; border: 1px solid ${finding.metadata.execution_proven ? 'rgba(239, 68, 68, 0.4)' : 'rgba(234, 179, 8, 0.4)'};">
+                        <div class="flex items-center space-x-2 text-xs font-semibold">
+                            <span style="color: ${finding.metadata.execution_proven ? '#fca5a5' : '#fde047'};">
+                                ${finding.metadata.execution_proven ? '✅' : '⚠️'} Execution Proven: <strong>${finding.metadata.execution_proven ? 'YES' : 'NO'}</strong>
+                            </span>
+                            ${finding.metadata.deserialization_confirmed !== undefined ? `
+                                <span style="color: #93c5fd;">| Deserialization: <strong>${finding.metadata.deserialization_confirmed === true ? 'YES' : finding.metadata.deserialization_confirmed === false ? 'NO' : 'UNKNOWN'}</strong></span>
+                            ` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                <div class="text-sm whitespace-pre-line" style="color: #fca5a5;">${escapeHtml(finding.exploitation_details)}</div>
+                ${finding.metadata && finding.metadata.verification_methods && finding.metadata.verification_methods.length > 0 ? `
+                    <div class="mt-2 text-xs" style="color: #86efac;">
+                        <strong>Verification Methods:</strong> ${finding.metadata.verification_methods.join(', ')}
+                    </div>
+                ` : ''}
             </div>
         ` : ''}
     `;
@@ -1315,7 +1368,7 @@ function displayInformationTable(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += '<td class="px-4 py-3 font-medium" style="color: var(--text-main);">Web Server</td>';
             tableHTML += `<td class="px-4 py-3" style="color: var(--text-muted);">${escapeHtml(serverInfo)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1336,7 +1389,7 @@ function displayInformationTable(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += '<td class="px-4 py-3 font-medium" style="color: var(--text-main);">CDN Provider</td>';
             tableHTML += `<td class="px-4 py-3" style="color: var(--text-muted);">${escapeHtml(cdnInfo)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1358,7 +1411,7 @@ function displayInformationTable(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(techName)}</td>`;
             tableHTML += `<td class="px-4 py-3" style="color: var(--text-muted);">${escapeHtml(techDetails)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1376,7 +1429,7 @@ function displayInformationTable(findings) {
         organized.cms.forEach(finding => {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += '<td class="px-4 py-3 font-medium" style="color: var(--text-main);">WordPress</td>';
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1395,7 +1448,7 @@ function displayInformationTable(findings) {
             const pluginName = formatPluginName(finding.title);
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(pluginName)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1414,7 +1467,7 @@ function displayInformationTable(findings) {
             const themeName = formatPluginName(finding.title); // Reuse same formatter
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(themeName)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1435,7 +1488,7 @@ function displayInformationTable(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">User Enumeration</td>`;
             tableHTML += `<td class="px-4 py-3" style="color: var(--text-muted);">${escapeHtml(userInfo)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1455,7 +1508,7 @@ function displayInformationTable(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(finding.title)}</td>`;
             tableHTML += `<td class="px-4 py-3" style="color: var(--text-muted);">${escapeHtml(finding.description)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1475,7 +1528,7 @@ function displayInformationTable(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(finding.title)}</td>`;
             tableHTML += `<td class="px-4 py-3" style="color: var(--text-muted);">${escapeHtml(finding.description)}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(234, 88, 12, 0.2); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1557,18 +1610,49 @@ function displayInformationTable(findings) {
 }
 
 function displaySecurityChecks(findings) {
-    // Find all findings that represent security checks (have test_passed metadata or are INFO severity checks)
-    const checkFindings = findings.filter(f => 
-        (f.metadata && f.metadata.test_passed !== undefined) ||
-        (f.severity === 'info' && (
-            f.title.includes('Test') ||
-            f.title.includes('Protected') ||
-            f.title.includes('Enumeration') ||
-            f.title.includes('Brute-Force') ||
-            f.source_scanner === 'subdomain_enum' ||
-            f.source_scanner === 'wordpress_offensive'
-        ))
-    );
+    // Find all findings that represent security checks (defensive security tests, security headers, SSL checks, etc.)
+    const defensiveScanners = [
+        'security_headers', 'ssl_analyzer', 'dns_security', 'http_security',
+        'cookie_security', 'rate_limiting', 'api_security', 'content_security',
+        'backup_files', 'website_info'
+    ];
+    
+    const checkFindings = findings.filter(f => {
+        // Explicit test_passed metadata
+        if (f.metadata && f.metadata.test_passed !== undefined) {
+            return true;
+        }
+        
+        // Defensive security scanners
+        if (defensiveScanners.includes(f.source_scanner)) {
+            return true;
+        }
+        
+        // Offensive test scanners
+        if (f.source_scanner === 'subdomain_enum' || f.source_scanner === 'wordpress_offensive') {
+            return true;
+        }
+        
+        // Security-related patterns in title or category
+        const title = (f.title || '').toLowerCase();
+        const category = (f.category || '').toLowerCase();
+        
+        if (title.includes('security header') ||
+            title.includes('ssl') ||
+            title.includes('tls') ||
+            title.includes('cookie') ||
+            title.includes('http security') ||
+            title.includes('dns') ||
+            title.includes('rate limit') ||
+            title.includes('protected') ||
+            title.includes('test') ||
+            category.includes('security') ||
+            category.includes('configuration')) {
+            return true;
+        }
+        
+        return false;
+    });
     
     if (checkFindings.length === 0) {
         document.getElementById('securityChecksTable').innerHTML = 
@@ -1616,7 +1700,7 @@ function displaySecurityChecks(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(34, 197, 94, 0.2); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(formatTitle(finding.title))}</td>`;
             tableHTML += `<td class="px-4 py-3" style="color: #86efac;">${escapeHtml(cleanDescription(finding.description))}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1636,7 +1720,7 @@ function displaySecurityChecks(findings) {
             tableHTML += '<tr style="border-bottom: 1px solid rgba(239, 68, 68, 0.2); transition: background 0.2s;">';
             tableHTML += `<td class="px-4 py-3 font-medium" style="color: var(--text-main);">${escapeHtml(formatTitle(finding.title))}</td>`;
             tableHTML += `<td class="px-4 py-3" style="color: #fca5a5;">${escapeHtml(cleanDescription(finding.description))}</td>`;
-            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3);">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
+            tableHTML += `<td class="px-4 py-3"><span class="px-2.5 py-1 rounded-md text-xs font-medium" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1678,16 +1762,28 @@ function extractVersion(description) {
 }
 
 function formatScannerName(scanner) {
-    // Format scanner names nicely
+    // Format scanner names nicely - use compact names to prevent wrapping in badges
     const names = {
         'wpscan': 'WPScan',
         'nuclei': 'Nuclei',
         'nmap': 'Nmap',
         'sqlmap': 'SQLMap',
-        'wordpress_analyzer': 'WordPress Analyzer',
-        'directory_bruteforcer': 'Directory Bruteforcer',
-        'parameter_discovery': 'Parameter Discovery',
-        'exploit_intel': 'Exploit Intelligence'
+        'wordpress_analyzer': 'WP Analyzer',
+        'directory_bruteforcer': 'Dir Bruteforce',
+        'parameter_discovery': 'Param Discovery',
+        'exploit_intel': 'Exploit Intel',
+        'ssl_analyzer': 'SSL',
+        'security_headers': 'Sec Headers',
+        'dns_security': 'DNS',
+        'http_security': 'HTTP',
+        'cookie_security': 'Cookies',
+        'rate_limiting': 'Rate Limit',
+        'api_security': 'API',
+        'content_security': 'Content',
+        'backup_files': 'Backups',
+        'website_info': 'Website Info',
+        'subdomain_enum': 'Subdomains',
+        'wordpress_offensive': 'WP Offensive'
     };
     return names[scanner.toLowerCase()] || scanner.charAt(0).toUpperCase() + scanner.slice(1).replace(/_/g, ' ');
 }

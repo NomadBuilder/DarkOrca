@@ -51,9 +51,22 @@ def init_database():
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                settings TEXT DEFAULT '{}'
+                settings TEXT DEFAULT '{}',
+                failed_login_attempts INTEGER DEFAULT 0,
+                locked_until TEXT
             )
         ''')
+        
+        # Add new columns if they don't exist (for existing databases)
+        try:
+            cursor.execute('ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        
+        try:
+            cursor.execute('ALTER TABLE users ADD COLUMN locked_until TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         # Saved scans table
         cursor.execute('''
@@ -150,13 +163,77 @@ def verify_password(password: str, password_hash: str) -> bool:
 class User:
     """User model."""
     
-    def __init__(self, id: int, username: str, email: str, created_at: str, updated_at: str, settings: str = '{}'):
+    def __init__(self, id: int, username: str, email: str, created_at: str, updated_at: str, settings: str = '{}',
+                 failed_login_attempts: int = 0, locked_until: Optional[str] = None):
         self.id = id
         self.username = username
         self.email = email
         self.created_at = created_at
         self.updated_at = updated_at
         self.settings = json.loads(settings) if isinstance(settings, str) else settings
+        self.failed_login_attempts = failed_login_attempts
+        self.locked_until = locked_until
+    
+    @staticmethod
+    def check_account_locked(user_id: int) -> bool:
+        """Check if account is locked due to failed login attempts."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT locked_until FROM users WHERE id = ?', (user_id,))
+            row = cursor.fetchone()
+            if row and row['locked_until']:
+                try:
+                    locked_until = datetime.fromisoformat(row['locked_until'])
+                    if datetime.now() < locked_until:
+                        return True  # Still locked
+                    else:
+                        # Lock expired, clear it
+                        cursor.execute('''
+                            UPDATE users SET locked_until = NULL, failed_login_attempts = 0 WHERE id = ?
+                        ''', (user_id,))
+                        conn.commit()
+                        return False
+                except (ValueError, TypeError):
+                    return False
+            return False
+    
+    @staticmethod
+    def increment_failed_login(user_id: int):
+        """Increment failed login attempts and lock account if threshold reached."""
+        MAX_FAILED_ATTEMPTS = 5
+        LOCKOUT_DURATION_MINUTES = 15
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT failed_login_attempts FROM users WHERE id = ?', (user_id,))
+            row = cursor.fetchone()
+            if row and row['failed_login_attempts'] is not None:
+                current_attempts = row['failed_login_attempts'] + 1
+            else:
+                current_attempts = 1
+            
+            if current_attempts >= MAX_FAILED_ATTEMPTS:
+                # Lock account
+                locked_until = (datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)).isoformat()
+                cursor.execute('''
+                    UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?
+                ''', (current_attempts, locked_until, user_id))
+                logger.warning(f"Account locked for user_id {user_id} due to {current_attempts} failed login attempts")
+            else:
+                cursor.execute('''
+                    UPDATE users SET failed_login_attempts = ? WHERE id = ?
+                ''', (current_attempts, user_id))
+            conn.commit()
+    
+    @staticmethod
+    def reset_failed_login(user_id: int):
+        """Reset failed login attempts on successful login."""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?
+            ''', (user_id,))
+            conn.commit()
     
     @staticmethod
     def authenticate_and_upgrade(username: str, password: str) -> Optional['User']:
@@ -189,16 +266,44 @@ class User:
                     dummy_hash = hashlib.sha256((dummy_password + dummy_salt).encode()).hexdigest()
                     stored_hash = f"sha256:{dummy_salt}:{dummy_hash}"
             
+            # Check if account is locked (only if user exists)
+            if row:
+                user_id = row['id']
+                if User.check_account_locked(user_id):
+                    logger.warning(f"Login attempt for locked account: {username}")
+                    # Still increment to maintain timing, but don't reveal lock status
+                    User.increment_failed_login(user_id)
+                    return None
+            
             # Always verify password (constant-time operation)
             if verify_password(password, stored_hash) and row:
                 # Only proceed if password matches AND user exists
+                user_id = row['id']
+                
+                # Reset failed login attempts on successful login
+                User.reset_failed_login(user_id)
+                
+                # Handle optional fields (for backward compatibility with old databases)
+                failed_login_attempts = 0
+                locked_until = None
+                try:
+                    failed_login_attempts = row['failed_login_attempts'] or 0
+                except (KeyError, IndexError):
+                    pass
+                try:
+                    locked_until = row['locked_until']
+                except (KeyError, IndexError):
+                    pass
+                
                 user = User(
                     id=row['id'],
                     username=row['username'],
                     email=row['email'],
                     created_at=row['created_at'],
                     updated_at=row['updated_at'],
-                    settings=row['settings']
+                    settings=row['settings'],
+                    failed_login_attempts=failed_login_attempts,
+                    locked_until=locked_until
                 )
                 # Upgrade to bcrypt if using legacy SHA-256
                 if row['password_hash'].startswith('sha256:'):
@@ -215,6 +320,10 @@ class User:
                     except ImportError:
                         pass  # bcrypt not available, keep SHA-256
                 return user
+            else:
+                # Password verification failed - increment failed attempts if user exists
+                if row:
+                    User.increment_failed_login(row['id'])
         return None
     
     @staticmethod
@@ -237,13 +346,27 @@ class User:
                 cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
                 row = cursor.fetchone()
                 if row:
+                    # Handle optional fields (for backward compatibility with old databases)
+                    failed_login_attempts = 0
+                    locked_until = None
+                    try:
+                        failed_login_attempts = row['failed_login_attempts'] or 0
+                    except (KeyError, IndexError):
+                        pass
+                    try:
+                        locked_until = row['locked_until']
+                    except (KeyError, IndexError):
+                        pass
+                    
                     return User(
                         id=row['id'],
                         username=row['username'],
                         email=row['email'],
                         created_at=row['created_at'],
                         updated_at=row['updated_at'],
-                        settings=row['settings']
+                        settings=row['settings'],
+                        failed_login_attempts=failed_login_attempts,
+                        locked_until=locked_until
                     )
                 # Fallback to get_by_id
                 return User.get_by_id(user_id)
@@ -262,13 +385,27 @@ class User:
             cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
             row = cursor.fetchone()
             if row:
+                # Handle optional fields (for backward compatibility with old databases)
+                failed_login_attempts = 0
+                locked_until = None
+                try:
+                    failed_login_attempts = row['failed_login_attempts'] or 0
+                except (KeyError, IndexError):
+                    pass
+                try:
+                    locked_until = row['locked_until']
+                except (KeyError, IndexError):
+                    pass
+                
                 return User(
                     id=row['id'],
                     username=row['username'],
                     email=row['email'],
                     created_at=row['created_at'],
                     updated_at=row['updated_at'],
-                    settings=row['settings']
+                    settings=row['settings'],
+                    failed_login_attempts=failed_login_attempts,
+                    locked_until=locked_until
                 )
             return None
     
@@ -280,13 +417,27 @@ class User:
             cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
             row = cursor.fetchone()
             if row:
+                # Handle optional fields (for backward compatibility with old databases)
+                failed_login_attempts = 0
+                locked_until = None
+                try:
+                    failed_login_attempts = row['failed_login_attempts'] or 0
+                except (KeyError, IndexError):
+                    pass
+                try:
+                    locked_until = row['locked_until']
+                except (KeyError, IndexError):
+                    pass
+                
                 return User(
                     id=row['id'],
                     username=row['username'],
                     email=row['email'],
                     created_at=row['created_at'],
                     updated_at=row['updated_at'],
-                    settings=row['settings']
+                    settings=row['settings'],
+                    failed_login_attempts=failed_login_attempts,
+                    locked_until=locked_until
                 )
             return None
     
@@ -488,13 +639,27 @@ class UserSession:
             ''', (session_token, now.isoformat()))
             row = cursor.fetchone()
             if row:
+                # Handle optional fields (for backward compatibility with old databases)
+                failed_login_attempts = 0
+                locked_until = None
+                try:
+                    failed_login_attempts = row['failed_login_attempts'] or 0
+                except (KeyError, IndexError):
+                    pass
+                try:
+                    locked_until = row['locked_until']
+                except (KeyError, IndexError):
+                    pass
+                
                 return User(
                     id=row['id'],
                     username=row['username'],
                     email=row['email'],
                     created_at=row['created_at'],
                     updated_at=row['updated_at'],
-                    settings=row['settings']
+                    settings=row['settings'],
+                    failed_login_attempts=failed_login_attempts,
+                    locked_until=locked_until
                 )
             return None
     

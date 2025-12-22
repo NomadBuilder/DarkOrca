@@ -54,7 +54,9 @@ app.secret_key = os.getenv('SECRET_KEY', secrets.token_urlsafe(32))  # Required 
 app.config['SESSION_COOKIE_SECURE'] = os.getenv('SESSION_COOKIE_SECURE', 'False').lower() == 'true'  # True in production (HTTPS)
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days
+# Session timeout: 24 hours (reduced from 30 days for better security)
+SESSION_TIMEOUT_HOURS = int(os.getenv('SESSION_TIMEOUT_HOURS', '24'))
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=SESSION_TIMEOUT_HOURS)
 
 CORS(app)
 
@@ -99,6 +101,60 @@ MAX_CONCURRENT_SCANS = int(os.getenv('MAX_CONCURRENT_SCANS', '5'))
 current_concurrent_scans = 0
 scan_queue = []
 scan_lock = threading.Lock()  # Lock for thread-safe access to concurrent scan counter
+results_lock = threading.Lock()  # Lock for thread-safe access to scan_results
+active_scans_lock = threading.Lock()  # Lock for thread-safe access to active_scans
+
+
+# Thread-safe helper functions for accessing global state
+def get_scan_result(scan_id: str):
+    """Thread-safe getter for scan_results."""
+    with results_lock:
+        return scan_results.get(scan_id)
+
+
+def set_scan_result(scan_id: str, value):
+    """Thread-safe setter for scan_results."""
+    with results_lock:
+        scan_results[scan_id] = value
+
+
+def get_active_scan(scan_id: str):
+    """Thread-safe getter for active_scans."""
+    with active_scans_lock:
+        return active_scans.get(scan_id)
+
+
+def set_active_scan(scan_id: str, value):
+    """Thread-safe setter for active_scans."""
+    with active_scans_lock:
+        active_scans[scan_id] = value
+
+
+def update_active_scan(scan_id: str, updates: dict):
+    """Thread-safe updater for active_scans (partial update)."""
+    with active_scans_lock:
+        if scan_id in active_scans:
+            active_scans[scan_id].update(updates)
+        else:
+            active_scans[scan_id] = updates
+
+
+def has_active_scan(scan_id: str) -> bool:
+    """Thread-safe check for scan_id in active_scans."""
+    with active_scans_lock:
+        return scan_id in active_scans
+
+
+def has_scan_result(scan_id: str) -> bool:
+    """Thread-safe check for scan_id in scan_results."""
+    with results_lock:
+        return scan_id in scan_results
+
+
+def delete_scan_result(scan_id: str):
+    """Thread-safe deleter for scan_results."""
+    with results_lock:
+        scan_results.pop(scan_id, None)
 
 # Persistent storage for shareable results
 RESULTS_DIR = Path('scan_results')
@@ -106,11 +162,55 @@ RESULTS_DIR.mkdir(exist_ok=True)
 RESULTS_EXPIRY_DAYS = 30  # Results expire after 30 days
 
 
+# Determine if we're in production/development mode
+IS_PRODUCTION = os.getenv('FLASK_ENV', 'development').lower() == 'production'
+
+@app.before_request
+def ensure_session():
+    """Ensure session is permanent for all requests."""
+    from flask import session
+    session.permanent = True  # Make session persist across requests
+
+
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 errors with generic message."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Resource not found'}), 404
+    return render_template('404.html'), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors - sanitize error messages in production."""
+    logger.error(f"Internal server error: {error}", exc_info=True)
+    if request.path.startswith('/api/'):
+        # In production, return generic error. In development, include more detail.
+        error_msg = 'An internal error occurred' if IS_PRODUCTION else str(error)
+        return jsonify({'error': error_msg}), 500
+    # For HTML pages, return generic error page
+    return render_template('500.html'), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    """Global exception handler - sanitize all exceptions."""
+    logger.error(f"Unhandled exception: {error}", exc_info=True)
+    # Check if this is an API request
+    if request.path.startswith('/api/'):
+        # Return generic error message in production
+        error_msg = 'An error occurred processing your request' if IS_PRODUCTION else str(error)
+        status_code = getattr(error, 'code', 500)
+        return jsonify({'error': error_msg}), status_code
+    # For HTML pages, re-raise or return generic error
+    if IS_PRODUCTION:
+        return render_template('500.html'), 500
+    raise  # In development, show actual error
+
+
 @app.route('/')
 def index():
     """Main dashboard."""
-    from flask import session
-    session.permanent = True  # Ensure session persists
     user = get_current_user()
     csrf_token = generate_csrf_token()  # Generate CSRF token for forms
     return render_template('index.html', user=user, csrf_token=csrf_token)
@@ -132,6 +232,12 @@ def login():
         if not username or not password:
             return jsonify({'error': 'Username and password are required'}), 400
         
+        # Check if account is locked before attempting authentication
+        user_obj = User.get_by_username(username)
+        if user_obj and User.check_account_locked(user_obj.id):
+            # Account is locked - return generic error (don't reveal lock status to prevent enumeration)
+            return jsonify({'error': 'Authentication failed'}), 401
+        
         user = User.authenticate(username, password)
         if user:
             login_user(user)
@@ -145,7 +251,7 @@ def login():
             })
         else:
             # Generic error message to prevent username enumeration
-            # Same message regardless of whether username exists or password is wrong
+            # Same message regardless of whether username exists, password is wrong, or account is locked
             return jsonify({'error': 'Authentication failed'}), 401
     
     # GET request - show login page
@@ -172,8 +278,23 @@ def signup():
         if len(username) < 3:
             return jsonify({'error': 'Username must be at least 3 characters'}), 400
         
-        if len(password) < 6:
-            return jsonify({'error': 'Password must be at least 6 characters'}), 400
+        # Enhanced password strength requirements
+        password_errors = []
+        if len(password) < 8:
+            password_errors.append('at least 8 characters')
+        if not re.search(r'[A-Z]', password):
+            password_errors.append('one uppercase letter')
+        if not re.search(r'[a-z]', password):
+            password_errors.append('one lowercase letter')
+        if not re.search(r'\d', password):
+            password_errors.append('one number')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            password_errors.append('one special character')
+        
+        if password_errors:
+            return jsonify({
+                'error': f'Password must contain: {", ".join(password_errors)}'
+            }), 400
         
         # Validate email
         is_valid, error_msg = validate_email(email)
@@ -297,8 +418,8 @@ def save_scan():
     target_url = None
     shareable_id = None
     
-    if scan_id in scan_results:
-        result_dict = scan_results[scan_id]
+    if has_scan_result(scan_id):
+        result_dict = get_scan_result(scan_id)
         target = result_dict.get('target', '')
         scan_mode = result_dict.get('scan_mode', 'DEFENSIVE')
         target_url = result_dict.get('target_url', target)
@@ -346,6 +467,7 @@ def save_scan():
 
 @app.route('/api/profile/settings', methods=['GET', 'PUT'])
 @require_auth
+@require_csrf  # CSRF protection for PUT requests
 def user_settings():
     """Get or update user settings."""
     user = get_current_user()
@@ -535,8 +657,8 @@ def start_scan():
         total_scanners = 0
         estimated_total = 0
     
-    # Initialize scan status immediately
-    active_scans[scan_id] = {
+    # Initialize scan status immediately (thread-safe)
+    set_active_scan(scan_id, {
         'status': 'running',
         'progress': 0,
         'current_scanner': 'Initializing...',
@@ -546,8 +668,10 @@ def start_scan():
         'scanners_completed': 0,
         'elapsed_seconds': 0,
         'email': email,  # Store email for notification
-    }
-    logger.info(f"Scan {scan_id} initialized and added to active_scans. Total active scans: {len(active_scans)}")
+    })
+    with active_scans_lock:
+        total_scans = len(active_scans)
+    logger.info(f"Scan {scan_id} initialized and added to active_scans. Total active scans: {total_scans}")
     
     # Start scan in background thread
     def run_scan():
@@ -585,7 +709,7 @@ def start_scan():
                 # Offensive: base_scanners to base_scanners + offensive_scanners (but base scanners already counted)
                 # So total unique scanners completed = base_scanners (from defensive) + offensive_only (from offensive)
                 
-                active_scans[scan_id] = {
+                set_active_scan(scan_id, {
                     'status': 'running',
                     'progress': 0,
                     'current_scanner': None,
@@ -595,16 +719,16 @@ def start_scan():
                     'scanners_completed': 0,
                     'elapsed_seconds': 0,
                     'estimated_remaining_seconds': None,
-                }
+                })
                 
                 # First run defensive scan
                 def update_defensive_progress(progress_data):
                     defensive_completed = progress_data.get('scanners_completed', 0)
-                    active_scans[scan_id]['current_scanner'] = f'Defensive: {progress_data.get("current_scanner", "Running...")}'
-                    active_scans[scan_id]['scanners_completed'] = defensive_completed
-                    # Ensure we don't exceed total
-                    active_scans[scan_id]['scanners_completed'] = min(defensive_completed, defensive_scanners)
-                    active_scans[scan_id]['progress'] = int((defensive_completed / max(defensive_scanners, 1)) * 50)
+                    update_active_scan(scan_id, {
+                        'current_scanner': f'Defensive: {progress_data.get("current_scanner", "Running...")}',
+                        'scanners_completed': min(defensive_completed, defensive_scanners),
+                        'progress': int((defensive_completed / max(defensive_scanners, 1)) * 50)
+                    })
                     # Track per-scanner estimate
                     if 'current_scanner_estimate' in progress_data:
                         active_scans[scan_id]['current_scanner_estimate'] = progress_data.get('current_scanner_estimate')
@@ -711,6 +835,20 @@ def start_scan():
                 from src.scoring.engine import RiskScoringEngine
                 combined_result.findings = RiskScoringEngine.enhance_findings_with_remediation(combined_result.findings)
                 combined_result.risk_score = RiskScoringEngine.calculate_risk(combined_result)
+                
+                # Generate AI analysis for combined result (non-blocking)
+                try:
+                    from src.utils.ai_analyzer import generate_analysis
+                    logger.info("Generating AI analysis for combined scan result...")
+                    combined_result.ai_analysis = generate_analysis(combined_result)
+                    if combined_result.ai_analysis:
+                        logger.info("AI analysis generated successfully for combined result")
+                    else:
+                        logger.debug("AI analysis not available for combined result")
+                except Exception as e:
+                    logger.warning(f"Failed to generate AI analysis for combined result: {e}")
+                    combined_result.ai_analysis = None
+                
                 combined_result.scan_completed_at = datetime.utcnow()
                 
                 result = combined_result
@@ -737,17 +875,22 @@ def start_scan():
                     progress_callback=update_single_progress,
                 )
                 
-                # Update scan status with actual scanner count
-                active_scans[scan_id]['scanners_total'] = len(orchestrator.scanners)
-                active_scans[scan_id]['current_scanner'] = 'Starting scan...'
+                # Update scan status with actual scanner count - thread-safe
+                scanner_total = len(orchestrator.scanners)
+                update_active_scan(scan_id, {
+                    'scanners_total': scanner_total,
+                    'current_scanner': 'Starting scan...'
+                })
                 
                 result = orchestrator.scan(target)
                 
-                # Update final progress
-                active_scans[scan_id]['progress'] = 100
-                active_scans[scan_id]['scanners_completed'] = active_scans[scan_id]['scanners_total']
-                active_scans[scan_id]['estimated_remaining_seconds'] = 0
-                active_scans[scan_id]['current_scanner'] = 'Complete'
+                # Update final progress - thread-safe
+                update_active_scan(scan_id, {
+                    'progress': 100,
+                    'scanners_completed': scanner_total,
+                    'estimated_remaining_seconds': 0,
+                    'current_scanner': 'Complete'
+                })
             
             # Validate result has required fields
             if not hasattr(result, 'risk_score') or result.risk_score is None:
@@ -777,6 +920,7 @@ def start_scan():
                     'exploitations_successful': getattr(result, 'exploitations_successful', 0),
                     'scan_completed_at': result.scan_completed_at.isoformat() if result.scan_completed_at else None,
                     'scan_started_at': result.scan_started_at.isoformat() if result.scan_started_at else None,
+                    'ai_analysis': getattr(result, 'ai_analysis', None),  # Include AI analysis if available
                 }
             except Exception as e:
                 logger.error(f"Error creating result_dict: {e}", exc_info=True)
@@ -815,8 +959,8 @@ def start_scan():
                 logger.error(f"Error converting findings: {e}", exc_info=True)
                 result_dict['findings'] = []  # Empty list if conversion fails
             
-            # Save results BEFORE marking as completed (critical for frontend to load results)
-            scan_results[scan_id] = result_dict
+            # Save results BEFORE marking as completed (critical for frontend to load results) - thread-safe
+            set_scan_result(scan_id, result_dict)
             logger.info(f"Results saved for scan {scan_id}, total findings: {len(findings_list)}")
             
             # Generate shareable ID and save to persistent storage
@@ -833,7 +977,8 @@ def start_scan():
             result_dict['target_url'] = target  # Add target_url for saving
             
             # Send email notification if email provided
-            email = active_scans[scan_id].get('email', '')
+            scan_info = get_active_scan(scan_id)
+            email = scan_info.get('email', '') if scan_info else ''
             if email:
                 try:
                     from src.utils.email_sender import get_email_sender
@@ -869,14 +1014,14 @@ def start_scan():
                 active_scans[scan_id].update({
                     'status': 'completed',
                     'progress': 100,
-                    'scanners_completed': active_scans[scan_id].get('scanners_total', 0),
+                    'scanners_completed': get_active_scan(scan_id).get('scanners_total', 0) if get_active_scan(scan_id) else 0,
                     'completed_at': datetime.now().isoformat(),
                     'estimated_remaining_seconds': 0,
                     'current_scanner': 'Complete',
                 })
             else:
-                # If somehow not in active_scans, add it so status endpoint works
-                active_scans[scan_id] = {
+                # If somehow not in active_scans, add it so status endpoint works - thread-safe
+                set_active_scan(scan_id, {
                     'status': 'completed',
                     'progress': 100,
                     'scanners_completed': len(result.scanners_run) if hasattr(result, 'scanners_run') else 0,
@@ -884,7 +1029,7 @@ def start_scan():
                     'completed_at': datetime.now().isoformat(),
                     'estimated_remaining_seconds': 0,
                     'current_scanner': 'Complete',
-                }
+                })
             
         except Exception as e:
             logger.error(f"Scan failed: {e}", exc_info=True)
@@ -914,23 +1059,23 @@ def start_scan():
                         'scanner_errors': {**getattr(result, 'scanner_errors', {}), 'scan_failure': str(e)},
                         'exploitations_successful': 0,
                     }
-                    scan_results[scan_id] = partial_result
+                    set_scan_result(scan_id, partial_result)
                     logger.info("Partial results saved")
             except Exception as save_error:
                 logger.error(f"Failed to save partial results: {save_error}")
             
-            if scan_id in active_scans:
-                active_scans[scan_id].update({
+            if has_active_scan(scan_id):
+                update_active_scan(scan_id, {
                     'status': 'error',
-                    'error': str(e),
+                    'error': 'An error occurred during scan' if IS_PRODUCTION else str(e),  # Sanitize error in production
                     'completed_at': datetime.now().isoformat(),
                 })
             else:
-                active_scans[scan_id] = {
+                set_active_scan(scan_id, {
                     'status': 'error',
-                    'error': str(e),
+                    'error': 'An error occurred during scan' if IS_PRODUCTION else str(e),  # Sanitize error in production
                     'completed_at': datetime.now().isoformat(),
-                }
+                })
         finally:
             # Always decrement concurrent scan counter when scan completes or fails
             with scan_lock:
@@ -942,8 +1087,8 @@ def start_scan():
     thread.start()
     logger.info(f"Started scan thread for {scan_id}, thread name: {thread.name}, thread alive: {thread.is_alive()}")
     
-    # Verify scan is in active_scans before returning
-    if scan_id not in active_scans:
+    # Verify scan is in active_scans before returning - thread-safe
+    if not has_active_scan(scan_id):
         logger.error(f"CRITICAL: Scan {scan_id} not found in active_scans after initialization!")
     else:
         logger.info(f"Scan {scan_id} confirmed in active_scans before returning response")
@@ -958,12 +1103,17 @@ def start_scan():
 @app.route('/api/scan/<scan_id>/status', methods=['GET'])
 def get_scan_status(scan_id):
     """Get scan status."""
-    logger.info(f"Status check for scan_id: '{scan_id}' (type: {type(scan_id)}, len: {len(scan_id)}), active_scans keys: {list(active_scans.keys())[-5:]}")
-    logger.info(f"Scan ID in active_scans: {scan_id in active_scans}, Total active scans: {len(active_scans)}")
+    with active_scans_lock:
+        active_keys = list(active_scans.keys())[-5:]
+        total_active = len(active_scans)
+    logger.info(f"Status check for scan_id: '{scan_id}' (type: {type(scan_id)}, len: {len(scan_id)}), active_scans keys: {active_keys}")
+    logger.info(f"Scan ID in active_scans: {has_active_scan(scan_id)}, Total active scans: {total_active}")
     
-    # Check active_scans first (includes completed scans)
-    if scan_id in active_scans:
-        scan_data = active_scans[scan_id].copy()
+    # Check active_scans first (includes completed scans) - thread-safe
+    if has_active_scan(scan_id):
+        scan_data = get_active_scan(scan_id).copy() if get_active_scan(scan_id) else None
+        if not scan_data:
+            return jsonify({'error': 'Scan not found'}), 404
         
         # If completed, ensure we have the right status
         if scan_data.get('status') == 'completed':
@@ -1013,53 +1163,61 @@ def get_scan_status(scan_id):
                 scan_data['progress'] = min(progress, 99)  # Cap at 99% until complete
         
         return jsonify(scan_data)
-    elif scan_id in scan_results:
-        # Scan completed but not in active_scans - restore it
+    elif has_scan_result(scan_id):
+        # Scan completed but not in active_scans - restore it - thread-safe
+        result_data = get_scan_result(scan_id)
         scan_data = {
             'status': 'completed',
             'progress': 100,
             'estimated_remaining_seconds': 0,
-            'scanners_completed': len(scan_results[scan_id].get('scanners_run', [])),
-            'scanners_total': len(scan_results[scan_id].get('scanners_run', [])),
+            'scanners_completed': len(result_data.get('scanners_run', [])),
+            'scanners_total': len(result_data.get('scanners_run', [])),
             'current_scanner': 'Complete',
-            'completed_at': scan_results[scan_id].get('scan_completed_at'),
+            'completed_at': result_data.get('scan_completed_at'),
         }
-        # Restore to active_scans so future status checks work
-        active_scans[scan_id] = scan_data
+        # Restore to active_scans so future status checks work - thread-safe
+        set_active_scan(scan_id, scan_data)
         logger.info(f"Restored completed scan {scan_id} to active_scans")
         return jsonify(scan_data)
     else:
         # Check if scan_id has encoding issues (spaces vs underscores)
         normalized_scan_id = scan_id.replace(' ', '_')
-        if normalized_scan_id != scan_id and normalized_scan_id in active_scans:
+        if normalized_scan_id != scan_id and has_active_scan(normalized_scan_id):
             logger.warning(f"Scan ID {scan_id} not found, but normalized version {normalized_scan_id} exists in active_scans")
             scan_id = normalized_scan_id
-            scan_data = active_scans[scan_id].copy()
+            scan_data = get_active_scan(scan_id).copy() if get_active_scan(scan_id) else None
+            if not scan_data:
+                return jsonify({'error': 'Scan not found'}), 404
             if 'started_at' in scan_data:
                 started = datetime.fromisoformat(scan_data['started_at'])
                 elapsed = (datetime.now() - started).total_seconds()
                 scan_data['elapsed_seconds'] = int(elapsed)
             return jsonify(scan_data)
         
-        logger.warning(f"Scan ID {scan_id} not found in active_scans or scan_results. Active scan IDs: {list(active_scans.keys())[-10:]}")
+        with active_scans_lock:
+            active_keys = list(active_scans.keys())[-10:]
+        logger.warning(f"Scan ID {scan_id} not found in active_scans or scan_results. Active scan IDs: {active_keys}")
         # Return 404 with helpful message
         return jsonify({
             'error': 'Scan not found',
             'scan_id': scan_id,
             'message': 'Scan session may have expired or server was restarted. Please start a new scan.',
-            'available_scans': list(active_scans.keys())[-5:] if active_scans else []
+            'available_scans': active_keys[-5:] if active_keys else []
         }), 404
 
 
 @app.route('/api/scan/<scan_id>/cancel', methods=['POST'])
+@require_auth
+@require_csrf
 def cancel_scan(scan_id):
     """Cancel a running scan."""
-    if scan_id in active_scans:
-        active_scans[scan_id] = {
+    if has_active_scan(scan_id):
+        existing = get_active_scan(scan_id)
+        set_active_scan(scan_id, {
             'status': 'cancelled',
-            'progress': active_scans[scan_id].get('progress', 0),
+            'progress': existing.get('progress', 0) if existing else 0,
             'cancelled_at': datetime.now().isoformat(),
-        }
+        })
         logger.info(f"Scan {scan_id} cancelled by user")
         return jsonify({'status': 'cancelled', 'message': 'Scan cancelled successfully'})
     else:
@@ -1069,9 +1227,9 @@ def cancel_scan(scan_id):
 @app.route('/api/scan/<scan_id>/results', methods=['GET'])
 def get_scan_results(scan_id):
     """Get scan results."""
-    if scan_id in scan_results:
+    if has_scan_result(scan_id):
         try:
-            result_data = scan_results[scan_id]
+            result_data = get_scan_result(scan_id)
             
             # Ensure all data is JSON serializable
             def make_serializable(obj):
@@ -1095,10 +1253,8 @@ def get_scan_results(scan_id):
             return jsonify(serializable_result)
         except Exception as e:
             logger.error(f"Error serializing results for {scan_id}: {e}", exc_info=True)
-            return jsonify({
-                'error': 'Failed to serialize results',
-                'details': str(e)
-            }), 500
+            error_msg = 'Failed to serialize results' if IS_PRODUCTION else f'Failed to serialize results: {str(e)}'
+            return jsonify({'error': error_msg}), 500
     else:
         return jsonify({'error': 'Results not found'}), 404
 
@@ -1107,7 +1263,9 @@ def get_scan_results(scan_id):
 def list_scans():
     """List all scans."""
     scans = []
-    for scan_id, result in scan_results.items():
+    with results_lock:
+        scan_results_copy = dict(scan_results)  # Make a copy while holding lock
+    for scan_id, result in scan_results_copy.items():
         scans.append({
             'scan_id': scan_id,
             'target': result['target']['url'],

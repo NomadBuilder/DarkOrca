@@ -791,21 +791,18 @@ class ScanOrchestrator:
         result.findings = RiskScoringEngine.enhance_findings_with_remediation(result.findings)
         result.risk_score = RiskScoringEngine.calculate_risk(result)
         
-        result.scan_completed_at = datetime.utcnow()
-        
-        logger.info(f"Scan completed. Total findings: {len(result.findings)}")
-        logger.info(f"Risk score: {result.risk_score.overall_score}/100 ({result.risk_score.risk_level.value})")
-        
-        if self.scan_mode == ScanMode.OFFENSIVE and result.exploitations_successful > 0:
-            logger.warning(f"⚠️  {result.exploitations_successful} successful exploitation(s) detected!")
-        
-        return result
-        
-        # Enhance findings with remediation if missing
-        result.findings = RiskScoringEngine.enhance_findings_with_remediation(result.findings)
-        
-        # Calculate risk score
-        result.risk_score = RiskScoringEngine.calculate_risk(result)
+        # Generate AI analysis (non-blocking - if it fails, scan still succeeds)
+        try:
+            from .utils.ai_analyzer import generate_analysis
+            logger.info("Generating AI analysis...")
+            result.ai_analysis = generate_analysis(result)
+            if result.ai_analysis:
+                logger.info("AI analysis generated successfully")
+            else:
+                logger.debug("AI analysis not available (no API key or generation failed)")
+        except Exception as e:
+            logger.warning(f"Failed to generate AI analysis: {e}")
+            result.ai_analysis = None  # Ensure it's None if generation fails
         
         result.scan_completed_at = datetime.utcnow()
         

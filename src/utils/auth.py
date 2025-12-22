@@ -44,7 +44,16 @@ def require_auth(func):
 
 
 def login_user(user: User) -> str:
-    """Log in a user and return session token."""
+    """
+    Log in a user and return session token.
+    
+    Session fixation protection: Regenerates session ID on login to prevent
+    session fixation attacks where an attacker forces a user to use a known session ID.
+    """
+    # Session fixation protection: Clear existing session and regenerate session ID
+    session.clear()  # Clear all existing session data
+    # Regenerate session ID (Flask does this automatically on clear, but we ensure it)
+    
     session_token = UserSession.create(user.id)
     session['session_token'] = session_token
     session['user_id'] = user.id

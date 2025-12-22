@@ -324,66 +324,213 @@ class DeserializationScanner(BaseScanner):
         return findings
     
     def _test_yaml_deserialization(self, url: str) -> List[Finding]:
-        """Test for YAML deserialization vulnerabilities (PyYAML, etc.)."""
+        """Test for YAML deserialization vulnerabilities (PyYAML, Ruby Psych, etc.)."""
         findings = []
         
-        # YAML with dangerous Python code execution
-        # PyYAML's yaml.load() is unsafe, yaml.safe_load() is safe
+        import secrets
+        import string
+        import time
+        
+        # Generate unique markers for verification
+        random_token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+        unique_marker = f"YAML_RCE_{random_token}"
+        
+        # Get baseline response time and content for timing-based verification and false positive filtering
+        baseline_time = None
+        baseline_content = None
+        try:
+            baseline_start = time.time()
+            baseline_response = self.session.get(url, timeout=5)
+            baseline_time = time.time() - baseline_start
+            baseline_content = baseline_response.text
+        except:
+            pass
+        
+        # YAML payloads with multiple verification methods
         yaml_payloads = [
-            # Dangerous YAML payload (PyYAML yaml.load)
-            ('!!python/object/apply:os.system ["id"]', 'yaml_python_rce'),
-            ('!!python/object/apply:subprocess.check_output [["ls"]]', 'yaml_python_rce2'),
-            ('!!python/object/new:os.system ["whoami"]', 'yaml_python_rce3'),
+            # Test 1: Echo unique marker (for output-based verification)
+            (f'!!python/object/apply:subprocess.check_output [["echo", "{unique_marker}"]]', 'yaml_subprocess_output', 'output'),
+            # Test 2: Sleep command (for timing-based verification - more reliable)
+            ('!!python/object/apply:time.sleep [3]', 'yaml_sleep_timing', 'timing'),
+            # Test 3: Ruby/Rails specific - check for blocking (Psych::DisallowedClass = blocked, not executed)
+            ('--- !ruby/object:OpenStruct {}', 'ruby_object', 'ruby_object'),
         ]
         
         test_locations = self._get_test_locations(url)
         
         for location, method, data_key in test_locations:
-            for payload, payload_type in yaml_payloads:
+            for payload, payload_type, verification_method in yaml_payloads:
                 try:
+                    response_start = None
+                    response = None
+                    
                     if method == 'GET':
-                        response = self.session.get(location, params={data_key: payload}, timeout=5)
+                        response_start = time.time()
+                        response = self.session.get(location, params={data_key: payload}, timeout=10 if verification_method == 'timing' else 5)
                     elif method == 'POST':
-                        # YAML might be in request body
                         self.session.headers['Content-Type'] = 'application/x-yaml'
-                        response = self.session.post(location, data=payload, timeout=5)
+                        response_start = time.time()
+                        response = self.session.post(location, data=payload, timeout=10 if verification_method == 'timing' else 5)
                         self.session.headers['Content-Type'] = 'application/json'
                     else:
                         continue
                     
-                    # Check for command execution output
-                    command_output_indicators = ['uid=', 'gid=', 'groups=', 'root']
-                    
-                    # Check for YAML parsing errors
-                    yaml_errors = ['yaml', 'YAML', 'ScannerError', 'ParserError']
-                    
+                    response_time = time.time() - response_start if response_start else None
                     response_text = response.text
-                    if any(indicator in response_text for indicator in command_output_indicators):
+                    
+                    # VERIFICATION METHOD 1: Unique marker in response (strongest proof of execution)
+                    execution_proven = False
+                    verification_evidence = []
+                    
+                    if unique_marker in response_text:
+                        # Additional check: ensure payload wasn't just echoed back
+                        if payload not in response_text or len(response_text) > len(payload) + 50:
+                            execution_proven = True
+                            verification_evidence.append(f"Unique marker '{unique_marker}' found in response (output-based verification)")
+                    
+                    # VERIFICATION METHOD 2: Timing-based verification (sleep command)
+                    if verification_method == 'timing' and response_time and baseline_time:
+                        # If response took significantly longer (>2 seconds more than baseline), sleep likely executed
+                        if response_time > baseline_time + 2.0:
+                            execution_proven = True
+                            verification_evidence.append(f"Response delay detected: {response_time:.2f}s vs baseline {baseline_time:.2f}s (timing-based verification)")
+                    
+                    # Check for Ruby/Rails-specific blocking indicators (NOT execution)
+                    ruby_blocking_indicators = [
+                        'Psych::DisallowedClass',
+                        'Psych::SyntaxError',
+                        'ActiveSupport::MessageEncryptor',
+                        'YAML::DisallowedClass',
+                        'YAML::Syck::Resolv',
+                    ]
+                    
+                    is_blocked = any(indicator in response_text for indicator in ruby_blocking_indicators)
+                    
+                    # If blocked, this is NOT execution - report as unsafe deserialization only
+                    if is_blocked:
                         findings.append(Finding(
-                            title="YAML Deserialization Code Execution",
-                            description=f"YAML deserialization code execution confirmed at {location}. Dangerous yaml.load() is being used with untrusted input.",
-                            severity=FindingSeverity.CRITICAL,
-                            category=FindingCategory.EXPLOITATION,
-                            source_scanner=self.name,
-                            url=location,
-                            evidence=f"Command execution output detected. Payload type: {payload_type}",
-                            exploitation_details=f"YAML deserialization allows arbitrary code execution. Command was executed successfully.",
-                            remediation="Replace yaml.load() with yaml.safe_load(). Never use yaml.load() with user input. Consider using JSON instead of YAML.",
-                            references=["https://pyyaml.org/wiki/PyYAMLDocumentation#LoadingYAML"],
-                            metadata={'type': 'yaml', 'payload_type': payload_type, 'parameter': data_key}
-                        ))
-                        break
-                    elif any(indicator.lower() in response_text.lower() for indicator in yaml_errors):
-                        findings.append(Finding(
-                            title="Potential YAML Deserialization Vulnerability",
-                            description=f"YAML processing detected at {location}. If using yaml.load() instead of yaml.safe_load(), this is dangerous.",
+                            title="Unsafe YAML Deserialization Detected (Execution Blocked)",
+                            description=f"YAML deserialization detected at {location}, but execution was blocked by security controls. Dangerous deserialization path exists but is currently protected. This is unsafe deserialization, NOT confirmed code execution.",
                             severity=FindingSeverity.HIGH,
                             category=FindingCategory.VULNERABILITY,
                             source_scanner=self.name,
                             url=location,
-                            evidence=f"YAML parsing detected. Payload type: {payload_type}",
-                            remediation="Ensure yaml.safe_load() is used instead of yaml.load(). yaml.load() allows arbitrary code execution.",
-                            metadata={'type': 'yaml_unsafe', 'payload_type': payload_type}
+                            evidence=f"YAML deserialization attempted but blocked (indicator: {[ind for ind in ruby_blocking_indicators if ind in response_text][0]}). Payload type: {payload_type}. Execution not proven - security controls prevented code execution.",
+                            exploitation_details="Deserialization Confirmed: Yes | Execution Proven: No | Status: Blocked by security controls (e.g., Psych::DisallowedClass). This indicates unsafe YAML deserialization is occurring, but execution was prevented. However, security controls can be bypassed if additional vulnerable classes exist or if configuration changes.",
+                            remediation="Replace unsafe YAML deserialization with safe alternatives. If using Ruby/Psych, ensure ALL dangerous classes are in disallowed list. Use YAML.safe_load() or equivalent. Consider using JSON instead of YAML for untrusted input.",
+                            references=["https://pyyaml.org/wiki/PyYAMLDocumentation#LoadingYAML"],
+                            metadata={
+                                'type': 'yaml_blocked',
+                                'payload_type': payload_type,
+                                'parameter': data_key,
+                                'execution_proven': False,
+                                'deserialization_confirmed': True,
+                                'blocked_by': [ind for ind in ruby_blocking_indicators if ind in response_text]
+                            }
+                        ))
+                        break
+                    
+                    # VERIFIED EXECUTION: Only claim RCE if we have strong proof
+                    if execution_proven:
+                        findings.append(Finding(
+                            title="YAML Deserialization RCE Confirmed (VERIFIED)",
+                            description=f"YAML deserialization code execution VERIFIED at {location} using {', '.join(verification_evidence)}. This is confirmed remote code execution, not just unsafe deserialization.",
+                            severity=FindingSeverity.CRITICAL,
+                            category=FindingCategory.EXPLOITATION,
+                            source_scanner=self.name,
+                            url=location,
+                            evidence=f"Execution verified via: {', '.join(verification_evidence)}. Payload type: {payload_type}. Response time: {response_time:.2f}s (baseline: {baseline_time:.2f}s)" if response_time and baseline_time else f"Execution verified via: {', '.join(verification_evidence)}. Payload type: {payload_type}.",
+                            exploitation_details=f"Execution Proven: Yes | Verification Methods: {', '.join(verification_evidence)} | This is confirmed RCE, not just unsafe deserialization. Arbitrary code execution has been verified through deterministic side effects (command output or timing delays).",
+                            remediation="IMMEDIATE ACTION REQUIRED: This is confirmed remote code execution. Immediately replace yaml.load() with yaml.safe_load() or equivalent safe method. Never use unsafe YAML deserialization with user input. Consider migrating to JSON for untrusted data.",
+                            references=["https://pyyaml.org/wiki/PyYAMLDocumentation#LoadingYAML"],
+                            metadata={
+                                'type': 'yaml_rce_verified',
+                                'payload_type': payload_type,
+                                'parameter': data_key,
+                                'execution_proven': True,
+                                'deserialization_confirmed': True,
+                                'verification_methods': verification_evidence,
+                                'marker': unique_marker if unique_marker in response_text else None,
+                                'response_time': response_time,
+                                'baseline_time': baseline_time
+                            }
+                        ))
+                        break
+                    
+                    # UNVERIFIED: Generic patterns detected but no proof of execution
+                    generic_indicators = [
+                        ('uid=', 'gid=', 'groups='),  # id command output
+                        ('root:x:0:0', '/bin/bash', '/bin/sh'),  # /etc/passwd format
+                    ]
+                    
+                    indicator_matches = 0
+                    indicators_in_baseline = False
+                    for indicator_group in generic_indicators:
+                        if all(ind in response_text for ind in indicator_group):
+                            indicator_matches += 1
+                            # Check if these indicators were also in baseline (false positive filter)
+                            if baseline_content and all(ind in baseline_content for ind in indicator_group):
+                                indicators_in_baseline = True
+                    
+                    # Only report if we see indicators AND no execution proof
+                    # Use baseline comparison to reduce false positives, but don't require it (baseline might fail)
+                    if indicator_matches > 0 and not execution_proven and unique_marker not in response_text:
+                        # Check for input reflection (false positive) - payload shouldn't be directly echoed
+                        # If baseline exists, ensure indicators are NEW (not in baseline) to avoid false positives
+                        # But if baseline doesn't exist or failed, still report if patterns match
+                        should_report = True
+                        if payload in response_text[:500]:
+                            # Payload directly echoed - likely false positive
+                            should_report = False
+                        elif baseline_content and indicators_in_baseline:
+                            # Indicators were already in baseline - likely false positive
+                            should_report = False
+                        
+                        if should_report:
+                            findings.append(Finding(
+                                title="Unsafe YAML Deserialization Detected (Execution NOT Proven)",
+                                description=f"YAML deserialization with unsafe yaml.load() detected at {location}, but code execution was NOT verified. Generic command output patterns were detected, but no execution proof was found. This may indicate unsafe deserialization without confirmed RCE, or may be a false positive from input reflection/template evaluation.",
+                                severity=FindingSeverity.HIGH,
+                                category=FindingCategory.VULNERABILITY,
+                                source_scanner=self.name,
+                                url=location,
+                                evidence=f"Generic command output patterns detected ({indicator_matches} pattern groups), but execution verification failed. Unique marker '{unique_marker}' NOT found in response. This could indicate: (1) unsafe deserialization without RCE, (2) input reflection/echoing, (3) template evaluation, (4) debug endpoint output. Payload type: {payload_type}",
+                                exploitation_details="Deserialization Confirmed: Possibly | Execution Proven: No | This finding indicates unsafe YAML deserialization may be occurring, but code execution was NOT verified. The detected patterns could be false positives from input echoing, template evaluation, ERB/YAML parsing without execution, or debug endpoints. Manual verification with unique command markers (e.g., 'echo UNIQUE_STRING') required.",
+                                remediation="Replace yaml.load() with yaml.safe_load() or equivalent. Verify this finding manually by: (1) sending a YAML payload with 'echo UNIQUE_RANDOM_STRING', (2) checking if that exact string appears in response, (3) testing with timing delays (sleep). If execution cannot be proven, treat as unsafe deserialization vulnerability, not confirmed RCE.",
+                                references=["https://pyyaml.org/wiki/PyYAMLDocumentation#LoadingYAML"],
+                                metadata={
+                                    'type': 'yaml_unverified',
+                                    'payload_type': payload_type,
+                                    'parameter': data_key,
+                                    'execution_proven': False,
+                                    'deserialization_confirmed': None,  # Unknown
+                                    'requires_manual_review': True,
+                                    'marker_used': unique_marker,
+                                    'verification_status': 'failed_no_proof'
+                                }
+                            ))
+                            break
+                        # End of should_report check
+                    
+                    # YAML parsing errors (indicates YAML processing, not execution)
+                    yaml_processing_indicators = ['yaml', 'YAML', 'ScannerError', 'ParserError', 'ConstructorError', 'SafeYAML']
+                    if any(indicator.lower() in response_text.lower() for indicator in yaml_processing_indicators) and not execution_proven:
+                        findings.append(Finding(
+                            title="YAML Processing Detected (Execution NOT Proven)",
+                            description=f"YAML parsing/processing detected at {location}. If unsafe yaml.load() is in use, this could allow code execution, but execution was NOT verified in this test. This indicates YAML deserialization is occurring, but no code execution was confirmed.",
+                            severity=FindingSeverity.HIGH,
+                            category=FindingCategory.VULNERABILITY,
+                            source_scanner=self.name,
+                            url=location,
+                            evidence=f"YAML parsing/error messages detected. Payload type: {payload_type}. Execution Proven: No - only YAML processing detected.",
+                            exploitation_details="Deserialization Confirmed: Yes (YAML parsing detected) | Execution Proven: No | This indicates YAML deserialization is happening, but code execution was not verified. Verify via code review if yaml.load() vs yaml.safe_load() is used. If yaml.load() is confirmed, this is a high-risk vulnerability even without execution proof.",
+                            remediation="Ensure yaml.safe_load() or equivalent safe method is used instead of yaml.load(). If yaml.load() is in use, this is a high-risk vulnerability that could allow RCE. Verify via code review and replace with safe alternatives.",
+                            metadata={
+                                'type': 'yaml_processing',
+                                'payload_type': payload_type,
+                                'execution_proven': False,
+                                'deserialization_confirmed': True
+                            }
                         ))
                         break
                 

@@ -1,0 +1,25 @@
+# DarkOrca Requirements - Pinned Versions for Production
+# Python 3.8+
+
+# Core dependencies (pinned versions for stability)
+requests==2.31.0  # For API integrations and WordPress analyzer
+flask==2.3.3  # Web UI framework (last stable 2.3.x)
+flask-cors==4.0.0  # CORS support for web UI
+flask-limiter==3.5.0  # Rate limiting for API endpoints
+bcrypt==4.1.2  # Secure password hashing
+dnspython==2.4.2  # For DNS subdomain enumeration fallback
+python-whois==0.8.0  # For WHOIS lookups
+reportlab==4.0.7  # For PDF report generation
+python-dotenv==1.0.1  # For loading .env file
+
+# Optional: For AI-powered analysis in PDF reports
+openai==1.12.0  # Optional - only needed if using OPENAI_API_KEY
+boto3==1.34.34  # Optional - only needed if using AWS Bedrock
+
+# Note: This tool requires external scanners to be installed:
+# - WPScan: https://github.com/wpscanteam/wpscan
+# - Nuclei: https://github.com/projectdiscovery/nuclei
+# - Nmap: https://nmap.org/
+
+# To use pinned versions, copy this file to requirements.txt or use:
+# pip install -r requirements-pinned.txt

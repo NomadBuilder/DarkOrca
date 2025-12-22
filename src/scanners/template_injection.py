@@ -166,6 +166,9 @@ class TemplateInjectionScanner(BaseScanner):
                                            ('Execute' in payload and 'uid=' in expected))
                         # Note: Expression evaluation (like 7*7=49) is NOT code execution
                         
+                        # For code execution payloads, we need stronger verification
+                        # Single "uid=" match could be false positive - require multiple indicators
+                        
                         # Test GET parameter
                         test_url = f"{base_url}?{param}={quote(payload)}"
                         response = self.session.get(test_url, timeout=5)
@@ -195,7 +198,41 @@ class TemplateInjectionScanner(BaseScanner):
                                         break
                             else:
                                 # For other expected values (like config dumps, command output)
-                                if content_differs or is_code_execution:
+                                # For code execution, prefer MULTIPLE indicators but allow single with baseline check
+                                if is_code_execution and expected == 'uid=':
+                                    # Check for multiple command output patterns (not just single "uid=")
+                                    uid_pattern = 'uid=' in response.text
+                                    gid_pattern = 'gid=' in response.text
+                                    groups_pattern = 'groups=' in response.text
+                                    
+                                    # Check baseline for these patterns
+                                    baseline_uid = 'uid=' in baseline_content if baseline_content else False
+                                    baseline_gid = 'gid=' in baseline_content if baseline_content else False
+                                    baseline_groups = 'groups=' in baseline_content if baseline_content else False
+                                    
+                                    pattern_count = sum([uid_pattern, gid_pattern, groups_pattern])
+                                    
+                                    # Strong verification: 2+ patterns and not in baseline
+                                    if pattern_count >= 2:
+                                        if not (baseline_uid and baseline_gid) or (content_differs or not baseline_content):
+                                            code_execution_confirmed = True
+                                            confirmed_engine = engine_name
+                                            matched_payload = payload
+                                            matched_response = response.text[:500]
+                                            break
+                                    # Fallback: Single pattern if NOT in baseline (could be real, just less certain)
+                                    elif pattern_count == 1 and uid_pattern and not baseline_uid:
+                                        # Single uid= pattern, but not in baseline - report as POTENTIAL
+                                        code_execution_confirmed = True
+                                        confirmed_engine = engine_name
+                                        matched_payload = payload
+                                        matched_response = response.text[:500]
+                                        # Add note about verification level
+                                        if 'verification_note' not in exploitation_details:
+                                            exploitation_details['verification_note'] = 'Single pattern (uid=) detected - not in baseline. Manual verification recommended.'
+                                        break
+                                elif content_differs or is_code_execution:
+                                    # For non-code-execution or when we already verified code execution
                                     if is_code_execution:
                                         code_execution_confirmed = True
                                     else:
@@ -265,12 +302,30 @@ class TemplateInjectionScanner(BaseScanner):
                         response_snippet = matched_response[:300]  # Fallback to first 300 chars
                 
                 evidence = f"Request URL: {full_test_url}\nPayload: {matched_payload}\nResponse contains command execution output: {matched_output if matched_output else 'see response snippet'}\nResponse snippet: {response_snippet[:200]}..."
-                exploitation_details = f"Code execution confirmed in {confirmed_engine} template engine. Parameter '{param}' accepts payload '{matched_payload}' and executes it as template code. Command output was observed in response."
+                
+                # Adjust title/severity based on verification confidence
+                verification_note = exploitation_details.get('verification_note', '')
+                
+                # Build exploitation_details string (keep dict for verification_note check above)
+                exploitation_details_str = f"Code execution confirmed in {confirmed_engine} template engine. Parameter '{param}' accepts payload '{matched_payload}' and executes it as template code. Command output was observed in response."
+                if verification_note:
+                    exploitation_details_str += f" Note: {verification_note}"
+                if verification_note and 'Single pattern' in verification_note:
+                    title = f"SSTI - Code Execution ({confirmed_engine}) [REQUIRES VERIFICATION]"
+                    description = (f"Parameter '{param}' executes user input as template code in {confirmed_engine} template engine. "
+                                  f"Command output pattern detected (single pattern, not in baseline). "
+                                  f"{verification_note} Code execution likely but not fully verified.")
+                    severity = FindingSeverity.HIGH  # HIGH instead of CRITICAL for less certain
+                else:
+                    title = f"SSTI - Code Execution ({confirmed_engine})"
+                    description = (f"Parameter '{param}' executes user input as template code in {confirmed_engine} template engine. "
+                                  f"Code execution confirmed through observed command output in response (multiple indicators).")
+                    severity = FindingSeverity.CRITICAL
                 
                 findings.append(Finding(
-                    title=f"SSTI - Code Execution ({confirmed_engine})",
-                    description=f"Parameter '{param}' executes user input as template code in {confirmed_engine} template engine. Code execution confirmed through observed command output in response.",
-                    severity=FindingSeverity.CRITICAL,
+                    title=title,
+                    description=description,
+                    severity=severity,
                     category=FindingCategory.VULNERABILITY,
                     source_scanner=self.name,
                     url=full_test_url,
@@ -278,13 +333,14 @@ class TemplateInjectionScanner(BaseScanner):
                     remediation=f"Sanitize user input for parameter '{param}'. Use safe template rendering methods that do not execute user input as code. Disable code execution capabilities in template engine configuration.",
                     references=["https://owasp.org/www-community/attacks/Server_Side_Template_Injection"],
                     exploited=True,
-                    exploitation_details=exploitation_details,
+                    exploitation_details=exploitation_details_str,
                     metadata={
                         'engine': confirmed_engine,
                         'parameter': param,
                         'code_execution': True,
                         'payload': matched_payload,
                         'test_url': full_test_url,
+                        'verification_note': verification_note,
                     }
                 ))
             elif confirmed_engine and template_eval_confirmed and matched_payload and '49' in str(matched_payload):

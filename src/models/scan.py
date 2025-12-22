@@ -86,6 +86,7 @@ class ScanResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
     scan_mode: ScanMode = ScanMode.DEFENSIVE  # Mode used for this scan
     exploitations_successful: int = 0  # Count of successful exploitations
+    ai_analysis: Optional[str] = None  # AI-powered analysis of scan results
     
     def add_finding(self, finding: Finding):
         """Add a finding to the results, avoiding duplicates."""
@@ -132,5 +133,6 @@ class ScanResult:
             "metadata": self.metadata,
             "scan_mode": self.scan_mode.value,
             "exploitations_successful": self.exploitations_successful,
+            "ai_analysis": self.ai_analysis,
         }
 

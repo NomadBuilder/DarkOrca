@@ -2,6 +2,7 @@
 
 import requests
 import logging
+import re
 from typing import List, Optional
 from urllib.parse import urljoin
 
@@ -151,6 +152,13 @@ class XXEScanner(BaseScanner):
         """Test for XXE file read vulnerability."""
         findings = []
         
+        # Get baseline response for comparison
+        try:
+            baseline_response = self.session.get(base_url, timeout=5)
+            baseline_content = baseline_response.text.lower()
+        except:
+            baseline_content = ""
+        
         # XXE file read payloads
         file_payloads = {
             'linux': '''<?xml version="1.0" encoding="UTF-8"?>
@@ -179,31 +187,56 @@ class XXEScanner(BaseScanner):
                     )
                     
                     content = response.text.lower()
-                    # Check for file content indicators
-                    if os_type == 'linux' and 'root:' in content:
-                        findings.append(Finding(
-                            title="XXE File Read Vulnerability",
-                            description=f"Endpoint {endpoint} is vulnerable to XXE file read. Successfully read /etc/passwd.",
-                            severity=FindingSeverity.CRITICAL,
-                            category=FindingCategory.VULNERABILITY,
-                            source_scanner=self.name,
-                            url=test_url,
-                            remediation="Disable external entity processing in XML parser. Use secure XML parsers.",
-                            exploitation_details=f"Endpoint: {endpoint}, File read: /etc/passwd, Status code: {response.status_code}."
-                        ))
-                        break
-                    elif os_type == 'windows' and '[extensions]' in content:
-                        findings.append(Finding(
-                            title="XXE File Read Vulnerability",
-                            description=f"Endpoint {endpoint} is vulnerable to XXE file read. Successfully read Windows system file.",
-                            severity=FindingSeverity.CRITICAL,
-                            category=FindingCategory.VULNERABILITY,
-                            source_scanner=self.name,
-                            url=test_url,
-                            remediation="Disable external entity processing in XML parser.",
-                            exploitation_details=f"Endpoint: {endpoint}, File read: win.ini, Status code: {response.status_code}."
-                        ))
-                        break
+                    verification_level = 'unverified'
+                    
+                    # Check for file content indicators with baseline comparison
+                    if os_type == 'linux':
+                        # Require MULTIPLE indicators to reduce false positives
+                        root_in_response = 'root:' in content
+                        bin_in_response = '/bin/' in content or '/bin/bash' in content or '/bin/sh' in content
+                        root_in_baseline = 'root:' in baseline_content
+                        bin_in_baseline = '/bin/' in baseline_content or '/bin/bash' in baseline_content or '/bin/sh' in baseline_content
+                        
+                        # Strong verification: both patterns must appear AND not be in baseline
+                        if root_in_response and bin_in_response:
+                            if not root_in_baseline or not bin_in_baseline:
+                                # Additional check: look for passwd file format (username:password:uid:gid:...)
+                                import re
+                                if re.search(r'root:.*:\d+:\d+:', content):
+                                    verification_level = 'verified'
+                                    findings.append(Finding(
+                                        title="XXE File Read Vulnerability (VERIFIED)",
+                                        description=f"Endpoint {endpoint} is vulnerable to XXE file read. Successfully read /etc/passwd. Verified with multiple indicators.",
+                                        severity=FindingSeverity.CRITICAL,
+                                        category=FindingCategory.VULNERABILITY,
+                                        source_scanner=self.name,
+                                        url=test_url,
+                                        remediation="Disable external entity processing in XML parser. Use secure XML parsers.",
+                                        exploitation_details=f"Endpoint: {endpoint}, File read: /etc/passwd, Status code: {response.status_code}. Verification: multiple indicators (root:, /bin/, passwd format)."
+                                    ))
+                                    break
+                    
+                    elif os_type == 'windows':
+                        extensions_in_response = '[extensions]' in content
+                        fonts_in_response = '[fonts]' in content
+                        extensions_in_baseline = '[extensions]' in baseline_content
+                        fonts_in_baseline = '[fonts]' in baseline_content
+                        
+                        # Require indicator AND it must not be in baseline
+                        if (extensions_in_response or fonts_in_response):
+                            if not extensions_in_baseline and not fonts_in_baseline:
+                                verification_level = 'verified'
+                                findings.append(Finding(
+                                    title="XXE File Read Vulnerability (VERIFIED)",
+                                    description=f"Endpoint {endpoint} is vulnerable to XXE file read. Successfully read Windows system file. Verified with baseline comparison.",
+                                    severity=FindingSeverity.CRITICAL,
+                                    category=FindingCategory.VULNERABILITY,
+                                    source_scanner=self.name,
+                                    url=test_url,
+                                    remediation="Disable external entity processing in XML parser.",
+                                    exploitation_details=f"Endpoint: {endpoint}, File read: win.ini, Status code: {response.status_code}. Verification: pattern not in baseline."
+                                ))
+                                break
                 except:
                     continue
         

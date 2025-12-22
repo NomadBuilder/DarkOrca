@@ -90,6 +90,21 @@ class ConfigValidator:
             except ValueError:
                 errors.append(f"PORT must be an integer, got '{port}'")
         
+        # Validate SESSION_TIMEOUT_HOURS if provided
+        session_timeout = os.getenv('SESSION_TIMEOUT_HOURS', '')
+        if session_timeout:
+            try:
+                timeout_int = int(session_timeout)
+                if timeout_int < 1 or timeout_int > 168:  # Max 1 week (168 hours)
+                    errors.append(f"SESSION_TIMEOUT_HOURS must be between 1 and 168, got {timeout_int}")
+            except ValueError:
+                errors.append(f"SESSION_TIMEOUT_HOURS must be an integer, got '{session_timeout}'")
+        
+        # Note: SECRET_KEY is optional (will be generated if not set), but warn if using default
+        secret_key = os.getenv('SECRET_KEY', '')
+        if not secret_key:
+            logger.warning("SECRET_KEY not set - a new one will be generated on each restart (sessions will be invalidated)")
+        
         return len(errors) == 0, errors
     
     @staticmethod

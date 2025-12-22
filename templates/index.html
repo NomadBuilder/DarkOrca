@@ -74,6 +74,26 @@
             top: 0;
             z-index: 1000;
             margin-bottom: 0;
+            overflow: visible;
+        }
+        
+        header img {
+            display: block;
+            position: relative;
+            z-index: 1;
+            max-width: 100%;
+            height: auto;
+        }
+        
+        header > div > div:first-child {
+            position: relative;
+            z-index: 1;
+        }
+        
+        header a {
+            display: block;
+            position: relative;
+            z-index: 1;
         }
         
         /* Cards */
@@ -115,21 +135,40 @@
             box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1);
         }
         
-        /* Override browser autofill styling (white background issue) */
+        /* Override browser autofill styling (white/grey background issue) */
         input:-webkit-autofill,
         input:-webkit-autofill:hover,
         input:-webkit-autofill:focus,
-        input:-webkit-autofill:active {
+        input:-webkit-autofill:active,
+        input[type="email"]:-webkit-autofill,
+        input[type="email"]:-webkit-autofill:hover,
+        input[type="email"]:-webkit-autofill:focus,
+        input[type="email"]:-webkit-autofill:active {
             -webkit-text-fill-color: var(--text-main) !important;
             -webkit-box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.4) inset !important;
             box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.4) inset !important;
             transition: background-color 5000s ease-in-out 0s;
             background-color: rgba(0, 0, 0, 0.4) !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
         }
         
-        input:-webkit-autofill:focus {
+        input:-webkit-autofill:focus,
+        input[type="email"]:-webkit-autofill:focus {
             -webkit-box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.6) inset, 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1) !important;
             box-shadow: 0 0 0px 1000px rgba(0, 0, 0, 0.6) inset, 0 0 0 3px rgba(0, 200, 255, 0.15), 0 0 20px rgba(0, 200, 255, 0.1) !important;
+            border-color: rgba(0, 200, 255, 0.5) !important;
+        }
+        
+        /* Ensure email input has same styling as other inputs */
+        input[type="email"] {
+            background: rgba(0, 0, 0, 0.4) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: var(--text-main) !important;
+        }
+        
+        input[type="email"]:focus {
+            background: rgba(0, 0, 0, 0.6) !important;
+            border-color: rgba(0, 200, 255, 0.5) !important;
         }
         
         /* Sonar sweep on input focus */
@@ -644,11 +683,11 @@
     <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileNav()"></div>
     
     <!-- Header -->
-    <header class="py-4" style="margin-bottom: 0;">
+    <header class="py-4" style="margin-bottom: 0; overflow: visible;">
         <div class="container mx-auto px-6 max-w-7xl flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <a href="/">
-                    <img src="/static/DarkOrca.png" alt="DarkOrca Logo" style="height: 110px; width: auto;">
+            <div class="flex items-center space-x-3" style="position: relative; z-index: 1;">
+                <a href="/" style="display: block; position: relative; z-index: 1;">
+                    <img src="/static/DarkOrca.png" alt="DarkOrca Logo" style="height: 110px; width: auto; display: block;">
                 </a>
             </div>
             
@@ -799,18 +838,18 @@
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
+                    <label class="block text-sm font-medium mb-3" style="color: var(--text-muted); margin-bottom: 0.75rem;">
                         Risk Level
                     </label>
-                    <div id="defensiveInfo" class="success-box mt-2 text-sm hidden">
+                    <div id="defensiveInfo" class="success-box text-sm hidden" style="margin-top: 0;">
                         <i class="fas fa-shield-alt mr-2"></i>
                         Defensive mode performs safe, read-only reconnaissance. No exploitation attempts.
                     </div>
-                    <div id="riskWarning" class="warning-box mt-2 text-sm hidden">
+                    <div id="riskWarning" class="warning-box text-sm hidden" style="margin-top: 0;">
                         <i class="fas fa-exclamation-triangle mr-2"></i>
                         <span id="riskWarningText">Offensive mode will attempt to exploit vulnerabilities</span>
                     </div>
-                    <div id="comprehensiveInfo" class="info-box mt-2 text-sm">
+                    <div id="comprehensiveInfo" class="info-box text-sm" style="margin-top: 0;">
                         <i class="fas fa-info-circle mr-2"></i>
                         Comprehensive mode runs defensive reconnaissance first, then offensive exploitation for complete assessment. Ensure you have authorization before running offensive scans.
                     </div>
@@ -826,7 +865,7 @@
                         name="email" 
                         placeholder="your@email.com"
                         class="w-full"
-                        style="padding: 1rem 1.5rem !important;"
+                        style="padding: 1rem 1.5rem !important; background: rgba(0, 0, 0, 0.4) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; color: var(--text-main) !important;"
                     />
                     <p class="text-xs mt-1" style="color: var(--text-soft);">
                         Receive an email when the scan completes with a link to view results
@@ -934,6 +973,17 @@
                         <h3 class="text-lg font-semibold mb-3" style="color: var(--text-main);">Scanner Activity</h3>
                         <canvas id="scannerChart" style="max-height: 200px; width: 100% !important; height: auto !important;"></canvas>
                     </div>
+                </div>
+            </div>
+
+            <!-- AI Analysis Section -->
+            <div id="aiAnalysisSection" class="card p-6 mt-6 hidden">
+                <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main); letter-spacing: -0.01em;">
+                    <i class="fas fa-robot mr-2" style="color: var(--accent);"></i>
+                    AI Analysis
+                </h2>
+                <div id="aiAnalysisContent" style="color: var(--text-main); line-height: 1.7;">
+                    <!-- AI analysis will be inserted here -->
                 </div>
             </div>
 

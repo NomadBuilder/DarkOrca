@@ -116,6 +116,27 @@ class BackupFilesScanner(BaseScanner):
                     response = self.session.get(test_url, timeout=3, allow_redirects=False)
                     
                     if response.status_code == 200:
+                        # Verify it's not an error page or security block
+                        content = response.text.lower()
+                        
+                        # Check for common error page indicators
+                        error_indicators = [
+                            "page not found", "404", "not found", "error 404",
+                            "the page you requested was not found",
+                            "file not found", "does not exist", "cannot be found",
+                            "sorry, you have been blocked", "cloudflare",
+                            "access denied", "security service", "waf", "firewall"
+                        ]
+                        
+                        # If it's an error page or security block, skip it
+                        if any(indicator in content for indicator in error_indicators):
+                            continue
+                        
+                        # Check if response is too small (likely an error page)
+                        if len(response.text) < 50:
+                            # Very small responses are often error pages
+                            continue
+                        
                         # Check if it's actually a backup file (not just a 200 page)
                         content_type = response.headers.get('Content-Type', '').lower()
                         content_length = len(response.content)
@@ -153,13 +174,35 @@ class BackupFilesScanner(BaseScanner):
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)
                 
                 if response.status_code == 200:
+                    # Verify it's not an error page or security block
+                    content = response.text.lower()
+                    
+                    # Check for common error page indicators
+                    error_indicators = [
+                        "page not found", "404", "not found", "error 404",
+                        "the page you requested was not found",
+                        "file not found", "does not exist", "cannot be found",
+                        "sorry, you have been blocked", "cloudflare",
+                        "access denied", "security service", "waf", "firewall",
+                        "you are unable to access"
+                    ]
+                    
+                    # If it's an error page or security block, skip it
+                    if any(indicator in content for indicator in error_indicators):
+                        continue
+                    
+                    # Check if response is too small (likely an error page)
+                    if len(response.text) < 50:
+                        # Very small responses are often error pages
+                        continue
+                    
                     content_type = response.headers.get('Content-Type', '').lower()
-                    content = response.text[:500]  # First 500 chars
+                    content_sample = response.text[:500]  # First 500 chars
                     
                     # Check for sensitive indicators
                     sensitive_indicators = ['password', 'secret', 'key', 'token', 'api_key', 'database', 'db_password']
                     
-                    if any(indicator in content.lower() for indicator in sensitive_indicators):
+                    if any(indicator in content_sample.lower() for indicator in sensitive_indicators):
                         findings.append(Finding(
                             title="Sensitive Configuration File Exposed",
                             description=f"Sensitive file found: {path} (HTTP 200). File contains potential secrets or credentials.",
@@ -203,6 +246,28 @@ class BackupFilesScanner(BaseScanner):
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)
                 
                 if response.status_code == 200:
+                    # Verify it's not an error page or security block
+                    content = response.text.lower()
+                    
+                    # Check for common error page indicators
+                    error_indicators = [
+                        "page not found", "404", "not found", "error 404",
+                        "the page you requested was not found",
+                        "file not found", "does not exist", "cannot be found",
+                        "sorry, you have been blocked", "cloudflare",
+                        "access denied", "security service", "waf", "firewall",
+                        "you are unable to access"
+                    ]
+                    
+                    # If it's an error page or security block, skip it
+                    if any(indicator in content for indicator in error_indicators):
+                        continue
+                    
+                    # Check if response is too small (likely an error page)
+                    if len(response.text) < 50:
+                        # Very small responses are often error pages
+                        continue
+                    
                     findings.append(Finding(
                         title="Version Control Directory Exposed",
                         description=f"Version control directory/file found: {path} (HTTP 200). This may expose source code, commit history, and sensitive information.",

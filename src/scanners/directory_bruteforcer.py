@@ -132,7 +132,7 @@ class DirectoryBruteforcer(BaseScanner):
                 "-u", f"{target.url}/FUZZ",
                 "-w", temp_wordlist,
                 "-t", "10",  # 10 threads
-                "-mc", "200,204,301,302,307,401,403",  # Match these status codes
+                "-mc", "200,204,301,302,307",  # Only match actual success/redirect codes (exclude 401,403 to avoid false positives)
                 "-fs", "0",  # Filter out 0-byte responses
                 "-s",  # Silent mode
                 "-o", "/tmp/ffuf_output.json",
@@ -157,18 +157,72 @@ class DirectoryBruteforcer(BaseScanner):
                 stdout, stderr, returncode = self.run_command(args, timeout=120)
                 self.command = original_cmd
             
-            # Parse results
+            # Parse results and verify each finding
             try:
                 with open("/tmp/ffuf_output.json", "r") as f:
                     data = json.load(f)
                     results = data.get("results", [])
+                    
+                    # Import session for verification
+                    from ..utils.scanner_session import create_scanner_session
+                    verify_session = create_scanner_session()
                     
                     for result in results[:20]:  # Limit to top 20 findings
                         url_path = result.get("url", "")
                         status = result.get("status", 0)
                         size = result.get("length", 0)
                         
-                        if status in [200, 204, 301, 302, 307]:
+                        # Skip 404s - these are not discovered
+                        if status == 404:
+                            continue
+                        
+                        # Skip 403s that are security blocks (not actual access)
+                        if status == 403:
+                            # Verify if it's a real 403 or a security block
+                            try:
+                                verify_response = verify_session.get(url_path, timeout=5, allow_redirects=False)
+                                # Check if it's a security block (Cloudflare, WAF, etc.)
+                                content_lower = verify_response.text.lower()
+                                if any(block_indicator in content_lower for block_indicator in [
+                                    "cloudflare", "you have been blocked", "access denied",
+                                    "security service", "waf", "firewall", "captcha"
+                                ]):
+                                    # This is a security block, not actual file access - skip it
+                                    continue
+                            except:
+                                # If we can't verify, skip 403s to be safe
+                                continue
+                        
+                        # Only report actual successful responses (200, 204) or valid redirects
+                        if status in [200, 204]:
+                            # Verify it's not just an error page
+                            try:
+                                verify_response = verify_session.get(url_path, timeout=5, allow_redirects=True)
+                                content = verify_response.text.lower()
+                                
+                                # Check for common error page indicators
+                                error_indicators = [
+                                    "page not found", "404", "not found", "error 404",
+                                    "the page you requested was not found",
+                                    "file not found", "does not exist", "cannot be found"
+                                ]
+                                
+                                # If it's an error page, skip it
+                                if any(indicator in content for indicator in error_indicators):
+                                    continue
+                                
+                                # Check if response is too small (likely an error page)
+                                if len(verify_response.text) < 100:
+                                    # Very small responses are often error pages
+                                    continue
+                                
+                            except Exception as e:
+                                # If verification fails, skip to avoid false positives
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.debug(f"Could not verify {url_path}: {e}")
+                                continue
+                            
                             # Determine severity based on what was found
                             path = url_path.replace(target.url, "").strip("/")
                             
@@ -190,6 +244,52 @@ class DirectoryBruteforcer(BaseScanner):
                                 remediation=f"Review if {path} should be publicly accessible. Restrict access if it contains sensitive information.",
                                 metadata={"status_code": status, "size": size, "path": path},
                             ))
+                        
+                        # Handle redirects (301, 302, 307) - follow and verify
+                        elif status in [301, 302, 307]:
+                            try:
+                                verify_response = verify_session.get(url_path, timeout=5, allow_redirects=True)
+                                final_status = verify_response.status_code
+                                
+                                # Only report if redirect leads to actual content (200), not error pages
+                                if final_status == 200:
+                                    content = verify_response.text.lower()
+                                    
+                                    # Check for error page indicators
+                                    error_indicators = [
+                                        "page not found", "404", "not found",
+                                        "the page you requested was not found"
+                                    ]
+                                    
+                                    if not any(indicator in content for indicator in error_indicators):
+                                        # Valid redirect to actual content
+                                        path = url_path.replace(target.url, "").strip("/")
+                                        
+                                        if any(sensitive in path.lower() for sensitive in ["wp-config", "backup", "secret", "private", ".htaccess"]):
+                                            severity = FindingSeverity.HIGH
+                                        elif any(admin in path.lower() for admin in ["admin", "administrator", "wp-admin"]):
+                                            severity = FindingSeverity.MEDIUM
+                                        else:
+                                            severity = FindingSeverity.LOW
+                                        
+                                        findings.append(Finding(
+                                            title=f"Directory/File Discovered: {path}",
+                                            description=f"Directory brute forcing discovered {path} at {url_path} (Status: {status}, redirects to {verify_response.url}). This may expose sensitive information or functionality.",
+                                            severity=severity,
+                                            category=FindingCategory.EXPOSED_ENDPOINT,
+                                            source_scanner="directory_bruteforcer",
+                                            source_id=f"discovered_{path.replace('/', '_')}",
+                                            url=url_path,
+                                            remediation=f"Review if {path} should be publicly accessible. Restrict access if it contains sensitive information.",
+                                            metadata={"status_code": status, "final_status": final_status, "redirect_url": str(verify_response.url), "path": path},
+                                        ))
+                            except Exception as e:
+                                # If redirect verification fails, skip to avoid false positives
+                                import logging
+                                logger = logging.getLogger(__name__)
+                                logger.debug(f"Could not verify redirect {url_path}: {e}")
+                                continue
+                                
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
         

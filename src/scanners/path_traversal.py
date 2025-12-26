@@ -258,6 +258,12 @@ class PathTraversalScanner(BaseScanner):
                     data = {param_name: payload}
                     response = self.session.post(url, data=data, timeout=10)
                 
+                # Ignore 404 and 429 responses
+                if response.status_code == 404:
+                    continue
+                if response.status_code == 429:
+                    continue
+                
                 response_text = response.text
                 
                 # Get baseline response for comparison

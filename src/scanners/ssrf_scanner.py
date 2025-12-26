@@ -134,6 +134,14 @@ class SSRFScanner(BaseScanner):
                     response = self.session.get(base_url, params=test_params, timeout=10, allow_redirects=False)
                     elapsed_time = time.time() - start_time
                     
+                    # Ignore 404 (endpoint doesn't exist) and 429 (rate limiting) responses
+                    if response.status_code == 404:
+                        logger.debug(f"Skipping SSRF test for {param} - 404 response indicates endpoint doesn't exist")
+                        continue
+                    if response.status_code == 429:
+                        logger.debug(f"Skipping SSRF test for {param} - 429 response indicates rate limiting, not vulnerability")
+                        continue
+                    
                     # STRICT validation: SSRF requires ALL of these:
                     # 1. Different response body/content (indicating backend made request)
                     # 2. OR significantly longer response time (>3s longer than baseline)
@@ -234,6 +242,12 @@ class SSRFScanner(BaseScanner):
                 
                 response = self.session.post(webhook_url, json=test_payload, timeout=5)
                 
+                # Ignore 404 and 429 responses
+                if response.status_code == 404:
+                    continue
+                if response.status_code == 429:
+                    continue
+                
                 if response.status_code in [200, 202, 204]:
                     findings.append(Finding(
                         title="Webhook Endpoint Detected",
@@ -266,6 +280,12 @@ class SSRFScanner(BaseScanner):
                     test_params = {param: payload}
                     response = self.session.get(base_url, params=test_params, timeout=5, allow_redirects=False)
                     
+                    # Ignore 404 and 429 responses
+                    if response.status_code == 404:
+                        continue
+                    if response.status_code == 429:
+                        continue
+                    
                     content = response.text.lower()
                     # Check for file content indicators
                     # Check for actual file content indicators with stronger validation
@@ -287,16 +307,47 @@ class SSRFScanner(BaseScanner):
                                 break
                     
                     if found_file_content:
+                        # Get baseline for comparison to avoid false positives
+                        try:
+                            baseline_response = self.session.get(base_url, timeout=5, allow_redirects=False)
+                            baseline_content = baseline_response.text.lower()
+                            
+                            # Verify indicators are NOT in baseline (avoid false positives)
+                            baseline_has_indicators = any(
+                                indicator in baseline_content 
+                                for indicator in file_indicators.get(detected_file, [])
+                            )
+                            
+                            if baseline_has_indicators:
+                                # Indicators exist in baseline - likely false positive
+                                logger.debug(f"SSRF file read false positive: indicators found in baseline for {param}")
+                                continue
+                        except:
+                            pass
+                        
+                        # Extract actual file content snippet for evidence (first 500 chars, redacted)
+                        response_text = response.text
+                        file_snippet = response_text[:500].replace('\n', '\\n')  # Show snippet
+                        if len(response_text) > 500:
+                            file_snippet += "... (truncated)"
+                        
                         exploitation_details = f"Parameter '{param}' accepts file:// protocol. Local file '{detected_file}' content was retrieved. Status code: {response.status_code}."
                         
+                        # Include actual file content snippet in evidence for verification
+                        evidence = f"Request: {base_url}?{param}={quote(payload)}\n"
+                        evidence += f"Response Status: {response.status_code}\n"
+                        evidence += f"Response Length: {len(response_text)} bytes\n"
+                        evidence += f"File Content Snippet (first 500 chars):\n{file_snippet}\n"
+                        evidence += f"Verification: Response contains file content indicators from {detected_file}"
+                        
                         findings.append(Finding(
-                            title="SSRF via File Protocol",
-                            description=f"Parameter '{param}' allows file:// protocol access, enabling local file read via SSRF. Confirmed by retrieving content from {detected_file}.",
+                            title="SSRF via File Protocol (VERIFIED)",
+                            description=f"Parameter '{param}' allows file:// protocol access, enabling local file read via SSRF. VERIFIED by retrieving actual content from {detected_file}. File content snippet included in evidence.",
                             severity=FindingSeverity.HIGH,
                             category=FindingCategory.VULNERABILITY,
                             source_scanner=self.name,
                             url=f"{base_url}?{param}={quote(payload)}",
-                            evidence=f"Request: {base_url}?{param}={quote(payload)}\nResponse contains file content indicators from {detected_file}",
+                            evidence=evidence,
                             remediation=f"URGENT: Block file:// protocol and validate URLs for parameter '{param}'. Only allow http:// and https:// protocols, and whitelist allowed domains.",
                             exploitation_details=exploitation_details,
                         ))

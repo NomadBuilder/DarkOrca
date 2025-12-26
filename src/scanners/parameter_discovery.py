@@ -134,8 +134,22 @@ class ParameterDiscovery(BaseScanner):
                         
                         for url, param_list in param_dict.items():
                             if param_list:
+                                # Filter out HTML-escaped entities (false positives from HTML scraping)
+                                # Common patterns: &lt; (less than), &amp; (ampersand), &quot; (quote), etc.
+                                html_entity_patterns = ['&lt;', '&gt;', '&amp;', '&quot;', '&nbsp;', '&apos;']
+                                filtered_params = [
+                                    p for p in param_list 
+                                    if not any(entity in p for entity in html_entity_patterns)
+                                    and not p.startswith('&')  # Filter params starting with &
+                                    and len(p) > 1  # Filter single character "params"
+                                ]
+                                
+                                if not filtered_params:
+                                    # All params were HTML entities - skip this finding
+                                    continue
+                                
                                 # Check for sensitive parameters
-                                sensitive_params = [p for p in param_list if any(
+                                sensitive_params = [p for p in filtered_params if any(
                                     keyword in p.lower() for keyword in 
                                     ["pass", "password", "token", "key", "secret", "auth", "admin", "id", "user"]
                                 )]
@@ -147,14 +161,14 @@ class ParameterDiscovery(BaseScanner):
                                 # These are just form field names, not exposed data
                                 findings.append(Finding(
                                     title=f"HTTP Parameters Discovered ({len(param_list)} parameters)",
-                                    description=f"Parameter discovery found {len(param_list)} parameter(s) for {url}: {', '.join(param_list[:10])}{'...' if len(param_list) > 10 else ''}. {'Parameters with sensitive-sounding names: ' + ', '.join(sensitive_params) if sensitive_params else ''} Note: Parameter names alone do not indicate a vulnerability - these may be form field names.",
+                                    description=f"Parameter discovery found {len(filtered_params)} parameter(s) for {url}: {', '.join(filtered_params[:10])}{'...' if len(filtered_params) > 10 else ''}. {'Parameters with sensitive-sounding names: ' + ', '.join(sensitive_params) if sensitive_params else ''} Note: Parameter names alone do not indicate a vulnerability - these may be form field names. HTML-escaped entities have been filtered out.",
                                     severity=severity,
                                     category=FindingCategory.FINGERPRINTING,  # Changed from INFORMATION_DISCLOSURE - just discovery
                                     source_scanner="parameter_discovery",
                                     source_id="discovered_parameters",
                                     url=url,
                                     remediation="Review discovered parameters for security implications. Test for injection vulnerabilities, authorization bypass, and information disclosure. Note: Parameter names like 'password' are common in forms and do not indicate data exposure.",
-                                    metadata={"parameters": param_list, "sensitive_params": sensitive_params, "count": len(param_list)},
+                                    metadata={"parameters": filtered_params, "sensitive_params": sensitive_params, "count": len(filtered_params), "filtered_html_entities": len(param_list) - len(filtered_params)},
                                 ))
             
             except (FileNotFoundError, json.JSONDecodeError, KeyError):

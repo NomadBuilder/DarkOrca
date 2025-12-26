@@ -265,6 +265,12 @@ class CommandInjectionScanner(BaseScanner):
                 test_time = time.time() - test_start
                 response_text = response.text
                 
+                # Ignore 404 and 429 responses
+                if response.status_code == 404:
+                    continue
+                if response.status_code == 429:
+                    continue
+                
                 # Check for command injection indicators
                 is_vulnerable = False
                 exploitation_details = {}

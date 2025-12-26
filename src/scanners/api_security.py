@@ -123,15 +123,64 @@ class APISecurityAnalyzer(BaseScanner):
                         metadata={'auth_method': auth_header}
                     ))
                 elif response.status_code == 200:
-                    # API accessible without authentication
+                    # API accessible without authentication - but this is NOT automatically a vulnerability
+                    # Many sites expose public APIs, health endpoints, read-only APIs, etc.
+                    # We need to test actual impact: can we read sensitive data or mutate state?
+                    
+                    content = response.text[:1000]  # Sample content
+                    content_type = response.headers.get('Content-Type', '').lower()
+                    
+                    # Check if it's actually an API response (JSON/XML)
+                    is_json = 'application/json' in content_type or content.strip().startswith('{')
+                    is_xml = 'application/xml' in content_type or content.strip().startswith('<')
+                    
+                    # Test if we can mutate data (POST/PUT/DELETE)
+                    can_mutate = False
+                    exposes_data = False
+                    
+                    # Test POST to see if mutation works
+                    try:
+                        post_response = self.session.post(test_url, json={'test': 'data'}, timeout=5, allow_redirects=False)
+                        # If POST is accepted (not 401/403/405), mutation may be possible
+                        if post_response.status_code not in [401, 403, 405]:
+                            can_mutate = True
+                    except:
+                        pass
+                    
+                    # Check if response contains potentially sensitive data patterns
+                    sensitive_patterns = ['password', 'secret', 'token', 'key', 'api_key', 'private', 'admin']
+                    content_lower = content.lower()
+                    if any(pattern in content_lower for pattern in sensitive_patterns):
+                        # Only flag if it's actual JSON/XML data, not just HTML page
+                        if is_json or is_xml:
+                            exposes_data = True
+                    
+                    # Only report as HIGH if we can mutate OR expose sensitive data
+                    if can_mutate:
+                        severity = FindingSeverity.HIGH
+                        description = f"API endpoint {path} is accessible without authentication (HTTP 200) and accepts POST requests, allowing data mutation. This may expose sensitive functionality."
+                    elif exposes_data and (is_json or is_xml):
+                        severity = FindingSeverity.MEDIUM
+                        description = f"API endpoint {path} is accessible without authentication (HTTP 200) and may expose sensitive data. Verify if this endpoint should be public."
+                    else:
+                        # Public API or health endpoint - informational only
+                        severity = FindingSeverity.INFO
+                        description = f"API endpoint {path} is accessible without authentication (HTTP 200). This is common for public APIs, health endpoints, or read-only APIs. Verify that this endpoint does not expose sensitive data or allow unauthorized state mutation."
+                    
                     findings.append(Finding(
-                        title="API Endpoint Without Authentication",
-                        description=f"API endpoint {path} is accessible without authentication (HTTP 200). This may expose sensitive data or functionality.",
-                        severity=FindingSeverity.HIGH,
-                        category=FindingCategory.MISCONFIGURATION,
+                        title="API Endpoint Without Authentication" if severity != FindingSeverity.INFO else "API Endpoint Detected",
+                        description=description,
+                        severity=severity,
+                        category=FindingCategory.MISCONFIGURATION if severity != FindingSeverity.INFO else FindingCategory.FINGERPRINTING,
                         source_scanner=self.name,
                         url=test_url,
-                        remediation=f"Implement authentication for API endpoint {path}. Require API keys, OAuth tokens, or other authentication mechanisms.",
+                        remediation=f"Verify that API endpoint {path} does not expose sensitive data or allow unauthorized mutations. If needed, implement authentication.",
+                        metadata={
+                            'status_code': 200,
+                            'can_mutate': can_mutate,
+                            'exposes_data': exposes_data,
+                            'content_type': content_type
+                        }
                     ))
             except:
                 continue

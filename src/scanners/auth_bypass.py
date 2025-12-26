@@ -293,13 +293,43 @@ class AuthenticationBypassScanner(BaseScanner):
                 endpoint_url = urljoin(url, endpoint_path)
                 response = self.session.get(endpoint_url, timeout=5, allow_redirects=False)
                 
-                # If we get 200 (not 401/403), might be accessible
-                if response.status_code == 200:
-                    # Check if it looks like an admin panel
+                # Check status code and content to avoid false positives
+                status = response.status_code
+                
+                # 401/403 = protected (good) - skip
+                if status in [401, 403]:
+                    continue
+                
+                # 302/301 = redirect to login (good) - skip
+                if status in [302, 301, 303, 307, 308]:
+                    location = response.headers.get('Location', '').lower()
+                    if 'login' in location or 'signin' in location or 'auth' in location:
+                        continue  # Redirected to login - protected, not accessible
+                
+                # Only check 200 responses, and verify it's NOT a login page
+                if status == 200:
                     content = response.text.lower()
-                    admin_indicators = ['admin', 'dashboard', 'panel', 'control', 'settings', 'manage']
                     
-                    if any(indicator in content for indicator in admin_indicators):
+                    # Check if it's a login page (common false positive)
+                    login_indicators = [
+                        'login', 'sign in', 'signin', 'password', 'email',
+                        'enter your', 'log in', 'authentication required',
+                        'please login', 'please sign in'
+                    ]
+                    is_login_page = any(indicator in content[:2000] for indicator in login_indicators)
+                    
+                    if is_login_page:
+                        # It's a login page, not accessible admin panel - skip
+                        continue
+                    
+                    # Check if it looks like an actual admin panel (not just a page mentioning "admin")
+                    admin_panel_indicators = ['dashboard', 'admin panel', 'control panel', 'management console', 'settings page']
+                    is_admin_panel = any(indicator in content[:2000] for indicator in admin_panel_indicators)
+                    
+                    # Also check for forms with admin functionality (not login forms)
+                    has_admin_form = 'form' in content and 'admin' in content and 'login' not in content[:1000]
+                    
+                    if is_admin_panel or has_admin_form:
                         accessible_privileged.append(endpoint_path)
                 
             except:
@@ -308,14 +338,14 @@ class AuthenticationBypassScanner(BaseScanner):
         if accessible_privileged:
             findings.append(Finding(
                 title="Privileged Endpoints Accessible Without Authentication",
-                description=f"Privileged endpoints appear to be accessible without authentication: {', '.join(accessible_privileged)}",
+                description=f"Privileged endpoints appear to be accessible without authentication: {', '.join(accessible_privileged)}. These endpoints returned HTTP 200 and appear to be functional admin panels (not login pages). Manual verification recommended.",
                 severity=FindingSeverity.HIGH,
                 category=FindingCategory.VULNERABILITY,
                 source_scanner=self.name,
                 url=url,
-                evidence=f"Endpoints returned 200 status: {', '.join(accessible_privileged)}",
+                evidence=f"Endpoints returned 200 status (verified not login pages): {', '.join(accessible_privileged)}. Note: Login pages and redirects were filtered out.",
                 remediation="Implement authentication and authorization checks for all privileged endpoints. Use role-based access control (RBAC). Verify user permissions on every request.",
-                metadata={'accessible_endpoints': accessible_privileged}
+                metadata={'accessible_endpoints': accessible_privileged, 'verified_not_login': True}
             ))
         
         return findings

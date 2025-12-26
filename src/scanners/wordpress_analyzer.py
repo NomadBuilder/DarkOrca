@@ -472,8 +472,43 @@ class WordPressAnalyzer(BaseScanner):
                 files_tested.append(path)
                 
                 if response.status_code == 200:
-                    # Check if it's actually the file content, not a redirect
+                    # Check if it's actually the file content, not a 404 error page
                     content = response.text
+                    content_type = response.headers.get('Content-Type', '').lower()
+                    
+                    # Check if response is HTML (likely a 404 error page, not actual file)
+                    # Many sites return 200 OK with HTML error pages instead of 404
+                    if 'text/html' in content_type:
+                        # Check for common 404 error page indicators (multiple languages)
+                        error_page_indicators = [
+                            'page not found',
+                            'not found',
+                            '404',
+                            'introuvable',  # French for "not found"
+                            'perdue dans',  # French for "lost in" (from the error page)
+                            'cyber-espace',  # French for "cyberspace"
+                            'page est introuvable',  # French "page is not found"
+                            'requête s\'est perdue',  # French "request got lost"
+                            'équipe est en route',  # French "team is on its way"
+                            'error 404',
+                            'file not found',
+                            'document not found',
+                            'resource not found',
+                            'nothing found',
+                            'no se encontró',  # Spanish
+                            'nicht gefunden',  # German
+                        ]
+                        
+                        content_lower = content.lower()
+                        # Require at least 2 indicators to reduce false positives
+                        found_indicators = [ind for ind in error_page_indicators if ind in content_lower]
+                        
+                        if len(found_indicators) >= 1:  # At least one indicator suggests error page
+                            # This is likely a 404 error page, not the actual file
+                            files_protected.append(path)
+                            continue
+                    
+                    # Check if it's actually the file content, not a redirect
                     if len(content) > 100:  # Likely actual file content
                         # For wp-config.php, verify it's actually WordPress-related
                         if path == '/wp-config.php':

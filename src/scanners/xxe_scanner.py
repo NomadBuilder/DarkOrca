@@ -243,10 +243,17 @@ class XXEScanner(BaseScanner):
         return findings
     
     def _test_xxe_ssrf(self, base_url: str) -> List[Finding]:
-        """Test for XXE-based SSRF."""
+        """Test for XXE-based SSRF with proper validation to prevent false positives."""
         findings = []
         
-        # XXE SSRF payload
+        # Get baseline response for comparison
+        try:
+            baseline_response = self.session.get(base_url, timeout=5)
+            baseline_content = baseline_response.text.lower()
+        except:
+            baseline_content = ""
+        
+        # XXE SSRF payload targeting cloud metadata
         xxe_ssrf_payload = '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE test [
 <!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/">
@@ -258,6 +265,14 @@ class XXEScanner(BaseScanner):
         for endpoint in test_endpoints:
             try:
                 test_url = urljoin(base_url, endpoint)
+                
+                # First, verify endpoint exists (skip 404s)
+                check_response = self.session.get(test_url, timeout=5)
+                if check_response.status_code == 404:
+                    logger.debug(f"Skipping {endpoint} - endpoint doesn't exist (404)")
+                    continue
+                
+                # Test with XXE payload
                 response = self.session.post(
                     test_url,
                     data=xxe_ssrf_payload,
@@ -265,21 +280,52 @@ class XXEScanner(BaseScanner):
                     timeout=5
                 )
                 
+                # Ignore 404 and 429 responses (endpoint doesn't exist or rate limiting)
+                if response.status_code == 404:
+                    logger.debug(f"Skipping {endpoint} - 404 response indicates endpoint doesn't exist")
+                    continue
+                if response.status_code == 429:
+                    logger.debug(f"Skipping {endpoint} - 429 response indicates rate limiting, not vulnerability")
+                    continue
+                
                 content = response.text.lower()
-                # Check for cloud metadata indicators
-                if any(indicator in content for indicator in ['instance-id', 'public-ipv4', 'metadata', 'aws']):
+                
+                # AWS metadata specific indicators (more specific than generic words)
+                aws_metadata_indicators = [
+                    'instance-id',
+                    'ami-id',
+                    'hostname',
+                    'local-hostname',
+                    'public-hostname',
+                    'public-ipv4',
+                    'local-ipv4',
+                    'instance-type',
+                ]
+                
+                # Check which indicators are found
+                found_indicators = [ind for ind in aws_metadata_indicators if ind in content]
+                
+                # Check if indicators exist in baseline (false positive check)
+                baseline_indicators = [ind for ind in aws_metadata_indicators if ind in baseline_content]
+                
+                # Require multiple indicators (at least 2) AND they must be NEW (not in baseline)
+                new_indicators = [ind for ind in found_indicators if ind not in baseline_indicators]
+                
+                if len(new_indicators) >= 2:
+                    # Strong evidence: multiple specific metadata indicators found that weren't in baseline
                     findings.append(Finding(
-                        title="XXE-Based SSRF Vulnerability",
-                        description=f"Endpoint {endpoint} is vulnerable to XXE-based SSRF, allowing access to cloud metadata.",
+                        title="XXE-Based SSRF Vulnerability (VERIFIED)",
+                        description=f"Endpoint {endpoint} is vulnerable to XXE-based SSRF, allowing access to cloud metadata. Verified with multiple indicators: {', '.join(new_indicators)}.",
                         severity=FindingSeverity.CRITICAL,
                         category=FindingCategory.VULNERABILITY,
                         source_scanner=self.name,
                         url=test_url,
                         remediation="Disable external entity processing in XML parser. Block access to internal/cloud metadata endpoints.",
-                        exploitation_details=f"Endpoint: {endpoint}, SSRF target: cloud metadata, Status code: {response.status_code}."
+                        exploitation_details=f"Endpoint: {endpoint}, SSRF target: cloud metadata, Status code: {response.status_code}. Indicators found: {', '.join(new_indicators)}. Verified: indicators not present in baseline response."
                     ))
                     break
-            except:
+            except Exception as e:
+                logger.debug(f"XXE SSRF test error for {endpoint}: {e}")
                 continue
         
         return findings

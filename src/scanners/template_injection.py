@@ -69,6 +69,12 @@ class TemplateInjectionScanner(BaseScanner):
                 test_url = urljoin(base_url, path)
                 response = self.session.get(test_url, timeout=5)
                 
+                # Ignore 404 (endpoint doesn't exist) and 429 (rate limiting) responses
+                if response.status_code == 404:
+                    continue
+                if response.status_code == 429:
+                    continue
+                
                 if response.status_code in [200, 400]:
                     findings.append(Finding(
                         title="Template Endpoint Detected",
@@ -172,6 +178,12 @@ class TemplateInjectionScanner(BaseScanner):
                         # Test GET parameter
                         test_url = f"{base_url}?{param}={quote(payload)}"
                         response = self.session.get(test_url, timeout=5)
+                        
+                        # Ignore 404 and 429 responses
+                        if response.status_code == 404:
+                            continue
+                        if response.status_code == 429:
+                            continue
                         
                         # STRICT validation: Check if expected value appears in response
                         # AND it's not just coincidence (e.g., "49" appearing in normal content)

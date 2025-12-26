@@ -33,11 +33,16 @@ ENV/
 *.swo
 *~
 
-# Reports
+# Reports (scan results)
 *.json
-*.md
+scan_results/
 reports/
 output/
+
+# Exclude report markdown files but keep documentation
+*_report.md
+*_results.md
+scan_output*.md
 
 # Environment variables and secrets
 .env

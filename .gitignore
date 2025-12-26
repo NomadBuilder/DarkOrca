@@ -68,3 +68,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+darkorca.db
+

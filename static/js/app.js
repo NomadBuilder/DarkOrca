@@ -67,24 +67,28 @@ function setupFormHandler() {
         
         // Store form values IMMEDIATELY before any operations
         const targetInput = document.getElementById('targetInput');
-        const scanModeSelect = document.getElementById('scanMode');
+        const scanPresetSelect = document.getElementById('scanPreset');
         const emailInput = document.getElementById('email');
+        const authorizedCheckbox = document.getElementById('authorizedScan');
         
-        if (!targetInput || !scanModeSelect) {
+        if (!targetInput || !scanPresetSelect) {
             console.error('Form elements not found');
             return false;
         }
         
-        // Store values immediately
         const target = targetInput.value.trim();
-        const scanMode = scanModeSelect.value;
+        const scanPreset = scanPresetSelect.value;
         const email = emailInput?.value.trim() || '';
-        const exhaustiveCheckbox = document.getElementById('exhaustiveMode');
-        const exhaustive = exhaustiveCheckbox ? exhaustiveCheckbox.checked : false;
+        const authorized = authorizedCheckbox ? authorizedCheckbox.checked : false;
         
-        console.log('Form values captured:', { target, scanMode, email, exhaustive });
+        console.log('Form values captured:', { target, scanPreset, email, authorized });
         
-        // All scanners enabled by default - no need to expose to user
+        if (scanPreset === 'deep' && !authorized) {
+            alert('Deep Audit requires confirmation that you have authorization to test this target.');
+            return false;
+        }
+        
+        // All scanners configured by preset on server
         const enableSQLMap = true;
         const enableWPScan = true;
         const enableNuclei = true;
@@ -142,14 +146,14 @@ function setupFormHandler() {
                 headers: headers,
                 body: JSON.stringify({
                     target,
-                    scan_mode: scanMode,
+                    scan_preset: scanPreset,
+                    authorized,
                     email: email,
                     enable_sqlmap: enableSQLMap,
                     enable_wpscan: enableWPScan,
                     enable_nuclei: enableNuclei,
                     enable_nmap: enableNmap,
-                    exhaustive: exhaustive,
-                    csrf_token: csrfToken,  // Also include in body for compatibility
+                    csrf_token: csrfToken,
                 }),
             });
             
@@ -803,6 +807,35 @@ let severityChart = null;
 let categoryChart = null;
 let scannerChart = null;
 
+function displayExecutiveSummary(results) {
+    const section = document.getElementById('executiveSummarySection');
+    const overview = document.getElementById('executiveOverview');
+    const recommendation = document.getElementById('executiveRecommendation');
+    const priorities = document.getElementById('executivePriorities');
+    const summary = results.executive_summary;
+
+    if (!section || !summary) {
+        if (section) section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+    if (overview) overview.textContent = summary.overview || '';
+    if (recommendation) {
+        recommendation.innerHTML = `<strong>Recommended next step:</strong> ${escapeHtml(summary.recommendation || '')}`;
+    }
+    if (priorities && summary.top_priorities && summary.top_priorities.length) {
+        priorities.innerHTML = summary.top_priorities.map((item, idx) => `
+            <div class="p-3 rounded-lg" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                <div class="text-sm font-semibold" style="color: var(--text-main);">${idx + 1}. ${escapeHtml(item.title)}</div>
+                <div class="text-xs mt-1" style="color: var(--text-muted);">${escapeHtml(item.severity)} · ${escapeHtml(item.confidence)}</div>
+            </div>
+        `).join('');
+    } else if (priorities) {
+        priorities.innerHTML = '';
+    }
+}
+
 function displayResults(results) {
     // Hide progress, show results
     document.getElementById('scanProgress').classList.add('hidden');
@@ -821,6 +854,9 @@ function displayResults(results) {
         );
     });
     
+    // Executive summary
+    displayExecutiveSummary(results);
+
     // Update risk summary (use actionable findings count)
     document.getElementById('riskScore').textContent = results.risk_score.overall_score.toFixed(1);
     document.getElementById('findingsCount').textContent = actionableFindings.length;
@@ -1166,7 +1202,7 @@ function createFindingCard(finding) {
                     <h4 class="font-semibold mb-1" style="color: #f2f3f5;">${escapeHtml(formatTitle(finding.title))}</h4>
                     <p class="text-sm mb-2 leading-relaxed whitespace-pre-line" style="color: #9aa0a6;">${escapeHtml(cleanDescription(finding.description))}</p>
                     <div class="flex flex-wrap gap-2 text-xs">
-                        <span class="px-2.5 py-1 rounded-md font-medium" style="background: rgba(255, 107, 107, 0.2); color: #ff8e8e; border: 1px solid rgba(255, 107, 107, 0.3); white-space: nowrap; display: inline-block;">${escapeHtml(formatScannerName(finding.source_scanner))}</span>
+                        ${finding.confidence ? `<span class="px-2.5 py-1 rounded-md font-medium" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3);">${escapeHtml(finding.confidence.charAt(0).toUpperCase() + finding.confidence.slice(1))}</span>` : ''}
                         <span class="px-2.5 py-1 rounded-md font-medium" style="background: rgba(255, 255, 255, 0.1); color: #9aa0a6; border: 1px solid rgba(255, 255, 255, 0.08);">${escapeHtml(formatCategory(finding.category))}</span>
                         ${finding.url ? `<a href="${escapeHtml(finding.url)}" target="_blank" class="px-2.5 py-1 rounded-md font-medium transition-colors" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3);">View URL</a>` : ''}
                         ${finding.exploited ? '<span class="px-2.5 py-1 rounded-md font-semibold" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3);">⚠️ Exploited</span>' : ''}
@@ -1185,6 +1221,20 @@ function createFindingCard(finding) {
                     <i class="fas fa-lightbulb mr-1"></i>Remediation
                 </div>
                 <div class="text-sm" style="color: #93c5fd;">${escapeHtml(finding.remediation)}</div>
+            </div>
+        ` : ''}
+        ${finding.references && finding.references.length > 0 ? `
+            <div class="mt-3 p-3 rounded" style="background: rgba(16, 185, 129, 0.1); border-left: 4px solid rgba(16, 185, 129, 0.5);">
+                <div class="text-sm font-medium mb-2" style="color: #6ee7b7;">
+                    <i class="fas fa-link mr-1"></i>Known Vulnerabilities & References
+                </div>
+                <ul class="space-y-1 text-sm">
+                    ${finding.references.map(ref => `
+                        <li>
+                            <a href="${escapeHtml(ref)}" target="_blank" rel="noopener noreferrer" class="underline break-all" style="color: #6ee7b7;">${escapeHtml(ref)}</a>
+                        </li>
+                    `).join('')}
+                </ul>
             </div>
         ` : ''}
         ${finding.exploitation_details ? `
@@ -1968,51 +2018,51 @@ function resetForm() {
     // Don't clear the form fields - let user keep their input
 }
 
-// Update risk warning based on scan mode
-function updateRiskLevelInfo(mode) {
+// Update risk info based on audit preset
+function updateRiskLevelInfo(preset) {
     const defensiveInfo = document.getElementById('defensiveInfo');
     const riskWarning = document.getElementById('riskWarning');
     const comprehensiveInfo = document.getElementById('comprehensiveInfo');
-    const riskWarningText = document.getElementById('riskWarningText');
+    const deepAuth = document.getElementById('deepAuthorizationBlock');
+    const presetDescription = document.getElementById('presetDescription');
     
     if (!defensiveInfo || !riskWarning || !comprehensiveInfo) {
-        // Elements not ready yet
         return;
     }
+
+    const descriptions = {
+        quick: 'Fast baseline check: SSL, security headers, WordPress fingerprint, and exposed sensitive files.',
+        standard: 'Full defensive assessment with Nuclei and Nmap. Safe read-only checks.',
+        deep: 'Comprehensive authorized testing: defensive recon plus offensive exploitation checks.',
+    };
+    if (presetDescription) {
+        presetDescription.textContent = descriptions[preset] || descriptions.standard;
+    }
     
-    if (mode === 'defensive') {
+    if (preset === 'quick' || preset === 'standard') {
         defensiveInfo.classList.remove('hidden');
         riskWarning.classList.add('hidden');
         comprehensiveInfo.classList.add('hidden');
-    } else if (mode === 'offensive') {
+        if (deepAuth) deepAuth.classList.add('hidden');
+    } else if (preset === 'deep') {
         defensiveInfo.classList.add('hidden');
         riskWarning.classList.remove('hidden');
         comprehensiveInfo.classList.add('hidden');
-        if (riskWarningText) {
-            riskWarningText.textContent = 'Offensive mode will attempt to exploit vulnerabilities';
-        }
-        riskWarning.className = 'warning-box mt-2 text-sm';
-    } else if (mode === 'comprehensive') {
-        defensiveInfo.classList.add('hidden');
-        riskWarning.classList.add('hidden');  // Hide warning box
-        comprehensiveInfo.classList.remove('hidden');  // Show comprehensive info
+        if (deepAuth) deepAuth.classList.remove('hidden');
     }
 }
 
-// Setup scan mode change listener
 function setupScanModeListener() {
-    const scanModeSelect = document.getElementById('scanMode');
-    if (!scanModeSelect) {
+    const scanPresetSelect = document.getElementById('scanPreset');
+    if (!scanPresetSelect) {
         return;
     }
     
-    // Attach change event listener directly to select element
-    scanModeSelect.addEventListener('change', function(e) {
+    scanPresetSelect.addEventListener('change', function(e) {
         updateRiskLevelInfo(e.target.value);
     });
     
-    // Initialize based on current selection
-    updateRiskLevelInfo(scanModeSelect.value);
+    updateRiskLevelInfo(scanPresetSelect.value);
 }
 
 // Filter buttons

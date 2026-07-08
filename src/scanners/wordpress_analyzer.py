@@ -9,6 +9,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.response_validation import is_accessible_response
 
 
 class WordPressAnalyzer(BaseScanner):
@@ -471,67 +472,18 @@ class WordPressAnalyzer(BaseScanner):
                 response = self.session.get(full_url, timeout=5)
                 files_tested.append(path)
                 
-                if response.status_code == 200:
-                    # Check if it's actually the file content, not a 404 error page
+                if is_accessible_response(response):
                     content = response.text
-                    content_type = response.headers.get('Content-Type', '').lower()
-                    
-                    # Check if response is HTML (likely a 404 error page, not actual file)
-                    # Many sites return 200 OK with HTML error pages instead of 404
-                    if 'text/html' in content_type:
-                        # Check for common 404 error page indicators (multiple languages)
-                        error_page_indicators = [
-                            'page not found',
-                            'not found',
-                            '404',
-                            'introuvable',  # French for "not found"
-                            'perdue dans',  # French for "lost in" (from the error page)
-                            'cyber-espace',  # French for "cyberspace"
-                            'page est introuvable',  # French "page is not found"
-                            'requête s\'est perdue',  # French "request got lost"
-                            'équipe est en route',  # French "team is on its way"
-                            'error 404',
-                            'file not found',
-                            'document not found',
-                            'resource not found',
-                            'nothing found',
-                            'no se encontró',  # Spanish
-                            'nicht gefunden',  # German
-                        ]
-                        
-                        content_lower = content.lower()
-                        # Require at least 2 indicators to reduce false positives
-                        found_indicators = [ind for ind in error_page_indicators if ind in content_lower]
-                        
-                        if len(found_indicators) >= 1:  # At least one indicator suggests error page
-                            # This is likely a 404 error page, not the actual file
-                            files_protected.append(path)
+
+                    # For wp-config.php, verify it's actually WordPress-related
+                    if path == '/wp-config.php':
+                        wp_keywords = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'WP_', 'wordpress', 'table_prefix']
+                        is_wp_config = any(keyword.lower() in content.lower() for keyword in wp_keywords)
+
+                        if not is_wp_config:
                             continue
-                    
-                    # Check if it's actually the file content, not a redirect
-                    if len(content) > 100:  # Likely actual file content
-                        # For wp-config.php, verify it's actually WordPress-related
-                        if path == '/wp-config.php':
-                            # Check if it contains WordPress-specific content
-                            wp_keywords = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'WP_', 'wordpress', 'table_prefix']
-                            is_wp_config = any(keyword.lower() in content.lower() for keyword in wp_keywords)
-                            
-                            if not is_wp_config:
-                                # Not actually WordPress config - downgrade severity and update description
-                                findings.append(Finding(
-                                    title=f"File: {path}",
-                                    description=f"File {path} is publicly accessible at {full_url}. This file name suggests it may contain configuration data. Verify if this is a security concern for your application.",
-                                    severity=FindingSeverity.MEDIUM,  # Downgraded from CRITICAL
-                                    category=FindingCategory.INFORMATION_DISCLOSURE,
-                                    source_scanner="wordpress_analyzer",
-                                    source_id=f"exposed_file_{path.replace('/', '_').replace('.', '_')}",
-                                    url=full_url,
-                                    remediation=f"Restrict access to {path} using .htaccess rules or web server configuration if it contains sensitive information.",
-                                    metadata={"wp_verified": False, "content_length": len(content)}
-                                ))
-                                files_exposed.append(path)
-                                continue
-                        
+
+                    if len(content) > 100:
                         files_exposed.append(path)
                         findings.append(Finding(
                             title=f"File: {path}",

@@ -62,6 +62,7 @@ class ScanOrchestrator:
         scan_mode: ScanMode = ScanMode.DEFENSIVE,
         exhaustive: bool = False,  # Exhaustive mode for thorough scanning
         progress_callback: Optional[Callable[[Dict], None]] = None,
+        preset: Optional[str] = None,
     ):
         """
         Initialize orchestrator with scanner configuration.
@@ -77,6 +78,7 @@ class ScanOrchestrator:
         """
         self.scan_mode = scan_mode
         self.exhaustive = exhaustive
+        self.preset = preset
         self.scanners: List[BaseScanner] = []
         self.progress_callback = progress_callback
         
@@ -373,7 +375,7 @@ class ScanOrchestrator:
                     mode_str = "EXHAUSTIVE" if exhaustive else "standard"
                     logger.info(f"Path Traversal Scanner enabled (OFFENSIVE, {mode_str} mode)")
             except Exception as e:
-                logger.warning(f"Failed to initialize Path Traversal Scanner: {e}")(f"Failed to initialize Path Traversal Scanner: {e}")
+                logger.warning(f"Failed to initialize Path Traversal Scanner: {e}")
             
             # WordPress-Specific Vulnerabilities Scanner
             try:
@@ -428,6 +430,14 @@ class ScanOrchestrator:
                     logger.info("Template Injection Scanner enabled (OFFENSIVE)")
             except Exception as e:
                 logger.warning(f"Failed to initialize Template Injection Scanner: {e}")
+
+        if preset:
+            from .utils.scan_presets import get_allowed_scanners_for_preset
+            allowed = get_allowed_scanners_for_preset(preset)
+            if allowed is not None:
+                before = len(self.scanners)
+                self.scanners = [s for s in self.scanners if s.name in allowed]
+                logger.info(f"Preset '{preset}': using {len(self.scanners)}/{before} scanners")
         
         if not self.scanners:
             raise RuntimeError("No scanners available. Please install at least one scanner (WPScan, Nuclei, or Nmap).")

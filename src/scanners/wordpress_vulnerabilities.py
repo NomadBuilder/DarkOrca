@@ -10,6 +10,8 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.response_validation import is_accessible_response
+from ..utils.wp_references import wordpress_core_references
 
 import logging
 logger = logging.getLogger(__name__)
@@ -122,10 +124,9 @@ class WordPressVulnerabilities(BaseScanner):
             try:
                 test_url = urljoin(url, config_file)
                 response = self.session.get(test_url, timeout=5)
-                
-                if response.status_code == 200:
+
+                if is_accessible_response(response):
                     content = response.text
-                    # Check if it's actually wp-config content
                     if 'DB_NAME' in content or 'DB_PASSWORD' in content or 'DB_USER' in content:
                         findings.append(Finding(
                             title=f"WordPress Configuration File Exposed: {config_file}",
@@ -246,11 +247,14 @@ class WordPressVulnerabilities(BaseScanner):
             try:
                 test_url = urljoin(url, backup_path)
                 response = self.session.get(test_url, timeout=5)
-                
-                if response.status_code == 200:
+
+                if is_accessible_response(response):
                     content = response.text.lower()
-                    # Check for backup indicators
-                    if 'backup' in content or '.sql' in content or 'database' in content:
+                    backup_indicators = [
+                        'index of /', 'directory listing', 'parent directory',
+                        '.sql', 'mysqldump', 'database dump', 'wp_users',
+                    ]
+                    if any(indicator in content for indicator in backup_indicators):
                         findings.append(Finding(
                             title=f"WordPress Backup File/Directory Exposed: {backup_path}",
                             description=f"Backup file or directory '{backup_path}' is publicly accessible. "
@@ -292,10 +296,9 @@ class WordPressVulnerabilities(BaseScanner):
             try:
                 test_url = urljoin(url, db_file)
                 response = self.session.get(test_url, timeout=5)
-                
-                if response.status_code == 200:
+
+                if is_accessible_response(response):
                     content = response.text
-                    # Check for SQL dump indicators
                     if 'CREATE TABLE' in content or 'INSERT INTO' in content or 'wp_users' in content:
                         findings.append(Finding(
                             title=f"Database Dump File Exposed: {db_file}",
@@ -328,8 +331,7 @@ class WordPressVulnerabilities(BaseScanner):
         try:
             readme_url = urljoin(url, '/readme.html')
             response = self.session.get(readme_url, timeout=5)
-            if response.status_code == 200:
-                # Extract version from readme
+            if is_accessible_response(response):
                 version_match = re.search(r'Version\s+([\d.]+)', response.text, re.IGNORECASE)
                 if version_match:
                     version = version_match.group(1)
@@ -343,6 +345,7 @@ class WordPressVulnerabilities(BaseScanner):
                         source_id="wp_version_readme",
                         url=readme_url,
                         remediation="Remove or restrict access to readme.html. Consider removing version information from all public files.",
+                        references=wordpress_core_references(version),
                         metadata={
                             "version": version,
                             "source": "readme.html",
@@ -354,7 +357,7 @@ class WordPressVulnerabilities(BaseScanner):
         # Check generator meta tag
         try:
             response = self.session.get(url, timeout=10)
-            if response.status_code == 200:
+            if is_accessible_response(response):
                 generator_match = re.search(r'<meta\s+name=["\']generator["\'][^>]*content=["\']WordPress\s+([\d.]+)["\']', response.text, re.IGNORECASE)
                 if generator_match:
                     version = generator_match.group(1)
@@ -368,6 +371,7 @@ class WordPressVulnerabilities(BaseScanner):
                         source_id="wp_version_meta",
                         url=url,
                         remediation="Remove WordPress version from generator meta tag using a plugin or custom code.",
+                        references=wordpress_core_references(version),
                         metadata={
                             "version": version,
                             "source": "generator_meta",
@@ -527,10 +531,11 @@ class WordPressVulnerabilities(BaseScanner):
         try:
             ajax_url = urljoin(url, '/wp-admin/admin-ajax.php')
             response = self.session.get(ajax_url, timeout=5)
-            
-            if response.status_code == 200:
-                # Test for information disclosure
-                if 'action' in response.text.lower() or 'admin-ajax' in response.text.lower():
+
+            if is_accessible_response(response):
+                body = response.text.strip()
+                # Real admin-ajax.php usually returns 0, -1, or JSON — not HTML error pages.
+                if body in ('0', '-1') or body.startswith('{') or body.startswith('['):
                     findings.append(Finding(
                         title="WordPress admin-ajax.php Endpoint Exposed",
                         description="The WordPress admin-ajax.php endpoint is accessible. "
@@ -560,27 +565,28 @@ class WordPressVulnerabilities(BaseScanner):
         try:
             cron_url = urljoin(url, '/wp-cron.php')
             response = self.session.get(cron_url, timeout=5)
-            
-            if response.status_code == 200:
-                # wp-cron.php should be accessible, but check for vulnerabilities
-                findings.append(Finding(
-                    title="WordPress wp-cron.php Endpoint Accessible",
-                    description="The WordPress wp-cron.php endpoint is accessible. "
-                              "This endpoint can be abused for DoS attacks if triggered excessively. "
-                              "Consider disabling wp-cron and using real cron jobs instead.",
-                    severity=FindingSeverity.LOW,
-                    category=FindingCategory.EXPOSED_ENDPOINT,
-                    source_scanner="wordpress_vulnerabilities",
-                    source_id="wp_cron",
-                    url=cron_url,
-                    remediation="Disable wp-cron.php and use real cron jobs. "
-                               "Add define('DISABLE_WP_CRON', true); to wp-config.php "
-                               "and set up a real cron job to run wp-cron.php.",
-                    metadata={
-                        "endpoint": cron_url,
-                        "status_code": 200,
-                    },
-                ))
+
+            if is_accessible_response(response, min_content_length=0):
+                body = response.text.strip()
+                if not body or body == '0':
+                    findings.append(Finding(
+                        title="WordPress wp-cron.php Endpoint Accessible",
+                        description="The WordPress wp-cron.php endpoint is accessible. "
+                                  "This endpoint can be abused for DoS attacks if triggered excessively. "
+                                  "Consider disabling wp-cron and using real cron jobs instead.",
+                        severity=FindingSeverity.LOW,
+                        category=FindingCategory.EXPOSED_ENDPOINT,
+                        source_scanner="wordpress_vulnerabilities",
+                        source_id="wp_cron",
+                        url=cron_url,
+                        remediation="Disable wp-cron.php and use real cron jobs. "
+                                   "Add define('DISABLE_WP_CRON', true); to wp-config.php "
+                                   "and set up a real cron job to run wp-cron.php.",
+                        metadata={
+                            "endpoint": cron_url,
+                            "status_code": 200,
+                        },
+                    ))
         except:
             pass
         

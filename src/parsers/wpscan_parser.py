@@ -4,6 +4,13 @@ import json
 from typing import List, Dict, Any, Optional
 
 from ..models.finding import Finding, FindingSeverity, FindingCategory
+from ..utils.response_validation import get_inaccessibility_reason, is_accessible_response
+from ..utils.wp_references import (
+    enrich_cve_references,
+    wordpress_core_references,
+    wordpress_plugin_references,
+    wordpress_theme_references,
+)
 
 
 class WPScanParser:
@@ -107,7 +114,9 @@ class WPScanParser:
         # Parse interesting findings
         if "interesting_findings" in data:
             for finding_data in data["interesting_findings"]:
-                findings.append(WPScanParser._parse_interesting_finding(finding_data))
+                finding = WPScanParser._parse_interesting_finding(finding_data)
+                if finding is not None:
+                    findings.append(finding)
         
         # Parse detected plugins and themes (even without vulnerabilities)
         if "plugins" in data:
@@ -132,7 +141,8 @@ class WPScanParser:
                         category=FindingCategory.FINGERPRINTING,
                         source_scanner="wpscan",
                         source_id=f"plugin_{plugin_name}",
-                        remediation=f"Keep plugin '{plugin_name}' updated to the latest version. Review changelog for security patches.",
+                        remediation=f"Keep plugin '{plugin_name}' updated to the latest version. Review known vulnerabilities for this plugin.",
+                        references=wordpress_plugin_references(plugin_name, version_display if version else None),
                         metadata={"plugin": plugin_name, "version": version, "version_display": version_display, "wpscan_data": plugin_data},
                     ))
         
@@ -158,7 +168,8 @@ class WPScanParser:
                         category=FindingCategory.FINGERPRINTING,
                         source_scanner="wpscan",
                         source_id=f"theme_{theme_name}",
-                        remediation=f"Keep theme '{theme_name}' updated to the latest version. Review changelog for security patches.",
+                        remediation=f"Keep theme '{theme_name}' updated to the latest version. Review known vulnerabilities for this theme.",
+                        references=wordpress_theme_references(theme_name, version_display if version else None),
                         metadata={"theme": theme_name, "version": version, "version_display": version_display, "wpscan_data": theme_data},
                     ))
         
@@ -170,12 +181,13 @@ class WPScanParser:
                 if wp_version != "unknown":
                     findings.append(Finding(
                         title=f"WordPress Version Detected: {wp_version}",
-                        description=f"WordPress version {wp_version} is running. Check for known vulnerabilities in this version.",
+                        description=f"WordPress version {wp_version} is running. Review known vulnerabilities for this version.",
                         severity=FindingSeverity.INFO,
                         category=FindingCategory.FINGERPRINTING,
                         source_scanner="wpscan",
                         source_id="wp_version",
                         remediation=f"Keep WordPress updated to the latest version. Current version {wp_version} may have known security issues.",
+                        references=wordpress_core_references(wp_version),
                         metadata={"version": wp_version, "wpscan_data": version_data},
                     ))
         
@@ -215,6 +227,8 @@ class WPScanParser:
         remediation = f"Update {component} to a version that addresses this vulnerability."
         if cve:
             remediation += f" See CVE-{cve} for details."
+
+        references = enrich_cve_references(cve, references)
         
         return Finding(
             title=f"{component} Vulnerability: {title}",
@@ -234,18 +248,17 @@ class WPScanParser:
         )
     
     @staticmethod
-    def _parse_interesting_finding(finding_data: Dict[str, Any]) -> Finding:
+    def _parse_interesting_finding(finding_data: Dict[str, Any]) -> Optional[Finding]:
         """Parse an interesting finding entry."""
         import requests
-        
+
         url = finding_data.get("url", "")
         finding_type = finding_data.get("type", "unknown")
-        
+
         # Skip low-value findings that are often false positives
-        skip_types = ["headers", "license", "readme"]  # These are usually not security issues
-        
+        skip_types = ["headers", "license", "readme"]
+
         if finding_type in skip_types:
-            # Still create finding but with INFO severity and note it's informational
             finding_type_formatted = finding_type.replace('_', ' ').title()
             return Finding(
                 title=f"{finding_type_formatted} File Detected",
@@ -258,23 +271,23 @@ class WPScanParser:
                 remediation=f"The {finding_type} file is typically harmless. No action required unless it contains sensitive information.",
                 metadata={"finding_type": finding_type, "wpscan_data": finding_data, "is_accessible": True},
             )
-        
-        # For xmlrpc findings, verify if it's actually accessible (not 403)
+
         is_accessible = True
-        if finding_type == "xmlrpc" or "xmlrpc" in url.lower():
+        block_reason = None
+        if url:
             try:
                 response = requests.get(url, timeout=5, allow_redirects=False)
-                if response.status_code == 403:
-                    # 403 means protected, not exposed - update description
-                    is_accessible = False
-                elif response.status_code == 404:
-                    # 404 means not found - also not exposed
-                    is_accessible = False
-            except:
-                # If we can't verify, assume it might be accessible
-                pass
-        
-        # Map finding types to categories
+                is_accessible = is_accessible_response(response)
+                if not is_accessible:
+                    block_reason = get_inaccessibility_reason(response)
+            except Exception:
+                # If verification fails, avoid reporting as exposed.
+                is_accessible = False
+                block_reason = "could not verify accessibility"
+
+        if not is_accessible:
+            return None
+
         category_map = {
             "backup": FindingCategory.EXPOSED_ENDPOINT,
             "config": FindingCategory.INFORMATION_DISCLOSURE,
@@ -284,34 +297,27 @@ class WPScanParser:
             "robots": FindingCategory.INFORMATION_DISCLOSURE,
         }
         category = category_map.get(finding_type, FindingCategory.OTHER)
-        
+
         severity = FindingSeverity.LOW
         if finding_type in ["backup", "config"]:
             severity = FindingSeverity.MEDIUM
-        
-        # Format finding type nicely
+
         finding_type_formatted = finding_type.replace('_', ' ').title()
-        
-        # Adjust title and description based on accessibility
-        if not is_accessible and (finding_type == "xmlrpc" or "xmlrpc" in url.lower()):
-            title = f"{finding_type_formatted} File Detected (Protected)"
-            description = f"WPScan detected {finding_type} file at {url}, but access is blocked (403 Forbidden). This indicates the file exists but is protected, which is a good security practice."
-            severity = FindingSeverity.INFO  # Lower severity since it's protected
-            remediation = f"The {finding_type} file is currently protected. No action needed unless you want to completely remove it."
-        else:
-            title = f"{finding_type_formatted} File"
-            description = f"WPScan detected an exposed {finding_type} file at {url}. This may reveal sensitive information."
-            remediation = f"Remove or restrict access to {url}. Ensure sensitive files are not publicly accessible."
-        
+
         return Finding(
-            title=title,
-            description=description,
+            title=f"{finding_type_formatted} File",
+            description=f"WPScan detected an exposed {finding_type} file at {url}. This may reveal sensitive information.",
             severity=severity,
             category=category,
             source_scanner="wpscan",
             source_id=f"interesting_{finding_type}",
             url=url,
-            remediation=remediation,
-            metadata={"finding_type": finding_type, "wpscan_data": finding_data, "is_accessible": is_accessible},
+            remediation=f"Remove or restrict access to {url}. Ensure sensitive files are not publicly accessible.",
+            metadata={
+                "finding_type": finding_type,
+                "wpscan_data": finding_data,
+                "is_accessible": True,
+                "block_reason": block_reason,
+            },
         )
 

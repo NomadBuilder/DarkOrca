@@ -9,6 +9,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.response_validation import is_accessible_response
 
 logger = logging.getLogger(__name__)
 
@@ -115,33 +116,11 @@ class BackupFilesScanner(BaseScanner):
                     test_url = urljoin(base_url, f"{base_file}{ext}")
                     response = self.session.get(test_url, timeout=3, allow_redirects=False)
                     
-                    if response.status_code == 200:
-                        # Verify it's not an error page or security block
-                        content = response.text.lower()
-                        
-                        # Check for common error page indicators
-                        error_indicators = [
-                            "page not found", "404", "not found", "error 404",
-                            "the page you requested was not found",
-                            "file not found", "does not exist", "cannot be found",
-                            "sorry, you have been blocked", "cloudflare",
-                            "access denied", "security service", "waf", "firewall"
-                        ]
-                        
-                        # If it's an error page or security block, skip it
-                        if any(indicator in content for indicator in error_indicators):
-                            continue
-                        
-                        # Check if response is too small (likely an error page)
-                        if len(response.text) < 50:
-                            # Very small responses are often error pages
-                            continue
-                        
+                    if is_accessible_response(response):
                         # Check if it's actually a backup file (not just a 200 page)
                         content_type = response.headers.get('Content-Type', '').lower()
                         content_length = len(response.content)
-                        
-                        # Heuristics: backup files usually have specific content types or sizes
+
                         if any(indicator in content_type for indicator in ['text/', 'application/', 'octet-stream']) or content_length < 1000000:
                             findings.append(Finding(
                                 title="Backup File Exposed",
@@ -173,31 +152,8 @@ class BackupFilesScanner(BaseScanner):
                 test_url = urljoin(base_url, path)
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)
                 
-                if response.status_code == 200:
-                    # Verify it's not an error page or security block
-                    content = response.text.lower()
-                    
-                    # Check for common error page indicators
-                    error_indicators = [
-                        "page not found", "404", "not found", "error 404",
-                        "the page you requested was not found",
-                        "file not found", "does not exist", "cannot be found",
-                        "sorry, you have been blocked", "cloudflare",
-                        "access denied", "security service", "waf", "firewall",
-                        "you are unable to access"
-                    ]
-                    
-                    # If it's an error page or security block, skip it
-                    if any(indicator in content for indicator in error_indicators):
-                        continue
-                    
-                    # Check if response is too small (likely an error page)
-                    if len(response.text) < 50:
-                        # Very small responses are often error pages
-                        continue
-                    
-                    content_type = response.headers.get('Content-Type', '').lower()
-                    content_sample = response.text[:500]  # First 500 chars
+                if is_accessible_response(response):
+                    content_sample = response.text[:500]
                     
                     # Check for sensitive indicators
                     sensitive_indicators = ['password', 'secret', 'key', 'token', 'api_key', 'database', 'db_password']
@@ -245,29 +201,7 @@ class BackupFilesScanner(BaseScanner):
                 test_url = urljoin(base_url, path)
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)
                 
-                if response.status_code == 200:
-                    # Verify it's not an error page or security block
-                    content = response.text.lower()
-                    
-                    # Check for common error page indicators
-                    error_indicators = [
-                        "page not found", "404", "not found", "error 404",
-                        "the page you requested was not found",
-                        "file not found", "does not exist", "cannot be found",
-                        "sorry, you have been blocked", "cloudflare",
-                        "access denied", "security service", "waf", "firewall",
-                        "you are unable to access"
-                    ]
-                    
-                    # If it's an error page or security block, skip it
-                    if any(indicator in content for indicator in error_indicators):
-                        continue
-                    
-                    # Check if response is too small (likely an error page)
-                    if len(response.text) < 50:
-                        # Very small responses are often error pages
-                        continue
-                    
+                if is_accessible_response(response):
                     findings.append(Finding(
                         title="Version Control Directory Exposed",
                         description=f"Version control directory/file found: {path} (HTTP 200). This may expose source code, commit history, and sensitive information.",

@@ -10,6 +10,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.response_validation import is_accessible_response, is_blocked_status
 
 import logging
 logger = logging.getLogger(__name__)
@@ -297,17 +298,16 @@ class AuthenticationBypassScanner(BaseScanner):
                 status = response.status_code
                 
                 # 401/403 = protected (good) - skip
-                if status in [401, 403]:
+                if is_blocked_status(status):
                     continue
-                
+
                 # 302/301 = redirect to login (good) - skip
                 if status in [302, 301, 303, 307, 308]:
                     location = response.headers.get('Location', '').lower()
                     if 'login' in location or 'signin' in location or 'auth' in location:
-                        continue  # Redirected to login - protected, not accessible
-                
-                # Only check 200 responses, and verify it's NOT a login page
-                if status == 200:
+                        continue
+
+                if is_accessible_response(response):
                     content = response.text.lower()
                     
                     # Check if it's a login page (common false positive)

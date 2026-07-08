@@ -595,13 +595,23 @@ def start_scan():
         return jsonify({'error': 'Request body is required'}), 400
     
     target = data.get('target')
-    scan_mode = data.get('scan_mode', 'defensive')
-    email = data.get('email', '').strip()  # Optional email for notifications
-    enable_sqlmap = data.get('enable_sqlmap', False)
-    enable_wpscan = data.get('enable_wpscan', True)
-    enable_nuclei = data.get('enable_nuclei', True)
-    enable_nmap = data.get('enable_nmap', True)
-    exhaustive = data.get('exhaustive', False)  # Exhaustive mode (slower but more thorough)
+    email = data.get('email', '').strip()
+
+    from src.utils.scan_presets import resolve_scan_config
+    scan_config = resolve_scan_config(data)
+    scan_preset = scan_config['preset']
+    scan_mode = scan_config['scan_mode']
+    exhaustive = scan_config['exhaustive']
+    enable_sqlmap = scan_config['enable_sqlmap']
+    enable_wpscan = scan_config['enable_wpscan']
+    enable_nuclei = scan_config['enable_nuclei']
+    enable_nmap = scan_config['enable_nmap']
+    scan_preset_label = scan_config.get('preset_label', scan_preset)
+
+    if scan_config.get('requires_authorization') and not data.get('authorized'):
+        return jsonify({
+            'error': 'Deep Audit requires confirmation that you have authorization to test this target.',
+        }), 400
     
     # Validate target URL
     if not target:
@@ -620,7 +630,7 @@ def start_scan():
         if not is_valid:
             return jsonify({'error': f'Invalid email address: {error_msg}'}), 400
     
-    # Validate scan_mode
+    # Validate scan_mode (may come from preset)
     if scan_mode not in ['defensive', 'offensive', 'comprehensive']:
         return jsonify({'error': 'Invalid scan_mode. Must be defensive, offensive, or comprehensive'}), 400
     
@@ -640,6 +650,7 @@ def start_scan():
             enable_sqlmap=enable_sqlmap,
             scan_mode=mode,
             exhaustive=exhaustive,
+            preset=scan_preset if scan_mode == 'defensive' else None,
         )
         total_scanners = len(temp_orchestrator.scanners)
         scanner_time_estimates = {
@@ -740,10 +751,11 @@ def start_scan():
                     enable_wpscan=enable_wpscan,
                     enable_nuclei=enable_nuclei,
                     enable_nmap=enable_nmap,
-                    enable_sqlmap=False,  # No SQLMap in defensive phase
+                    enable_sqlmap=False,
                     scan_mode=ScanMode.DEFENSIVE,
                     exhaustive=exhaustive,
                     progress_callback=update_defensive_progress,
+                    preset=scan_preset,
                 )
                 
                 active_scans[scan_id]['current_scanner'] = f'Defensive Phase: Starting...'
@@ -873,6 +885,7 @@ def start_scan():
                     scan_mode=mode,
                     exhaustive=exhaustive,
                     progress_callback=update_single_progress,
+                    preset=scan_preset if mode == ScanMode.DEFENSIVE else None,
                 )
                 
                 # Update scan status with actual scanner count - thread-safe
@@ -913,7 +926,9 @@ def start_scan():
                         'protocol': result.target.protocol,
                     },
                     'scan_mode': result.scan_mode.value if hasattr(result.scan_mode, 'value') else str(result.scan_mode),
-                    'findings': [],  # Will be populated below
+                    'scan_preset': scan_preset,
+                    'scan_preset_label': scan_preset_label,
+                    'findings': [],
                     'risk_score': result.risk_score.to_dict() if hasattr(result.risk_score, 'to_dict') else {},
                     'scanners_run': getattr(result, 'scanners_run', []),
                     'scanner_errors': getattr(result, 'scanner_errors', {}),
@@ -929,6 +944,7 @@ def start_scan():
             # Convert Finding objects to dicts properly
             findings_list = []
             try:
+                from src.utils.finding_confidence import classify_finding_confidence
                 for finding in getattr(result, 'findings', []):
                     try:
                         finding_dict = {
@@ -948,12 +964,15 @@ def start_scan():
                             'exploited': getattr(finding, 'exploited', False),
                             'exploitation_details': getattr(finding, 'exploitation_details', None),
                         }
+                        finding_dict['confidence'] = classify_finding_confidence(finding_dict)
                         findings_list.append(finding_dict)
                     except Exception as e:
                         logger.warning(f"Error converting finding to dict: {e}")
                         continue  # Skip this finding but continue with others
                 
                 result_dict['findings'] = findings_list
+                from src.utils.executive_summary import build_executive_summary
+                result_dict['executive_summary'] = build_executive_summary(result_dict)
                 logger.info(f"Converted {len(findings_list)} findings to dict")
             except Exception as e:
                 logger.error(f"Error converting findings: {e}", exc_info=True)

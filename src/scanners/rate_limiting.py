@@ -118,7 +118,7 @@ class RateLimitingAnalyzer(BaseScanner):
             # Phase 2: Burst attack simulation - send many concurrent requests
             # Simulate a realistic DDoS-like attack: 1000 requests over 10 seconds (~100 req/sec)
             # This provides a significant load to properly test rate limiting
-            burst_size = 2000
+            burst_size = 200000
             burst_duration = 30.0  # seconds
             requests_per_second = burst_size / burst_duration
             

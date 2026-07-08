@@ -814,24 +814,27 @@
                 
                 <div>
                     <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
-                        Scan Mode
+                        Audit Preset
                     </label>
-                    <select id="scanMode" class="w-full" style="padding: 1rem 1.5rem !important;">
-                        <option value="defensive">🛡️ Defensive (Reconnaissance)</option>
-                        <option value="offensive">⚔️ Offensive (Exploitation)</option>
-                        <option value="comprehensive" selected>🎯 Comprehensive (Both Defensive + Offensive)</option>
+                    <select id="scanPreset" class="w-full" style="padding: 1rem 1.5rem !important;">
+                        <option value="quick">⚡ Quick Audit (~15 min) — SSL, headers, WordPress, exposed files</option>
+                        <option value="standard" selected>🛡️ Standard Audit (~45 min) — Full defensive assessment</option>
+                        <option value="deep">🎯 Deep Audit (~2 hr) — Comprehensive authorized testing</option>
                     </select>
+                    <p id="presetDescription" class="text-xs mt-2" style="color: var(--text-soft);">
+                        Full defensive assessment with Nuclei and Nmap. Safe read-only checks.
+                    </p>
                 </div>
-                
-                <div>
-                    <label class="flex items-start space-x-3 cursor-pointer p-3 rounded-lg hover:bg-opacity-10 hover:bg-white transition-colors" style="border: 1px solid var(--border-soft); background: rgba(255, 255, 255, 0.02);">
-                        <input type="checkbox" id="exhaustiveMode" class="mt-0.5 w-5 h-5 rounded cursor-pointer flex-shrink-0" style="accent-color: var(--accent);">
+
+                <div id="deepAuthorizationBlock" class="hidden">
+                    <label class="flex items-start space-x-3 cursor-pointer p-3 rounded-lg" style="border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08);">
+                        <input type="checkbox" id="authorizedScan" class="mt-0.5 w-5 h-5 rounded cursor-pointer flex-shrink-0" style="accent-color: var(--accent);">
                         <div class="flex-1">
                             <span class="block text-sm font-medium" style="color: var(--text-main);">
-                                🔍 Exhaustive Mode
+                                I confirm I own this target or have written authorization to test it
                             </span>
                             <span class="block text-xs mt-1" style="color: var(--text-soft);">
-                                More thorough scanning (slower, tests all payloads/parameters). Uncheck for faster standard scanning.
+                                Required for Deep Audit. Unauthorized testing may be illegal.
                             </span>
                         </div>
                     </label>
@@ -843,15 +846,15 @@
                     </label>
                     <div id="defensiveInfo" class="success-box text-sm hidden" style="margin-top: 0;">
                         <i class="fas fa-shield-alt mr-2"></i>
-                        Defensive mode performs safe, read-only reconnaissance. No exploitation attempts.
+                        Quick and Standard audits perform safe, read-only reconnaissance.
                     </div>
                     <div id="riskWarning" class="warning-box text-sm hidden" style="margin-top: 0;">
                         <i class="fas fa-exclamation-triangle mr-2"></i>
-                        <span id="riskWarningText">Offensive mode will attempt to exploit vulnerabilities</span>
+                        <span id="riskWarningText">Deep Audit includes offensive exploitation checks. Authorization required.</span>
                     </div>
-                    <div id="comprehensiveInfo" class="info-box text-sm" style="margin-top: 0;">
+                    <div id="comprehensiveInfo" class="info-box text-sm hidden" style="margin-top: 0;">
                         <i class="fas fa-info-circle mr-2"></i>
-                        Comprehensive mode runs defensive reconnaissance first, then offensive exploitation for complete assessment. Ensure you have authorization before running offensive scans.
+                        Standard audit uses defensive scanning only. Select Deep Audit for comprehensive authorized testing.
                     </div>
                 </div>
                 
@@ -927,6 +930,16 @@
 
         <!-- Results -->
         <div id="scanResults" class="hidden">
+            <!-- Executive Summary -->
+            <div id="executiveSummarySection" class="card p-6 mb-6 hidden">
+                <h2 class="text-2xl font-semibold mb-3" style="color: var(--text-main);">
+                    <i class="fas fa-file-alt mr-2" style="color: var(--accent);"></i>
+                    Executive Summary
+                </h2>
+                <p id="executiveOverview" class="text-sm leading-relaxed mb-4" style="color: var(--text-muted);"></p>
+                <div id="executiveRecommendation" class="p-4 rounded-lg mb-4" style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid rgba(59, 130, 246, 0.5); color: #93c5fd;"></div>
+                <div id="executivePriorities" class="space-y-2"></div>
+            </div>
             <!-- Risk Summary -->
             <div class="card p-6">
                 <h2 class="text-2xl font-semibold mb-4" style="color: var(--text-main); letter-spacing: -0.01em;">

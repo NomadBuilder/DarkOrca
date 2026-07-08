@@ -10,6 +10,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.response_validation import is_accessible_response
 
 
 class WordPressOffensive(BaseScanner):
@@ -99,8 +100,7 @@ class WordPressOffensive(BaseScanner):
             try:
                 response = self.session.get(login_url, timeout=10, allow_redirects=False)
                 
-                if response.status_code == 200:
-                    # Check if it's actually a login page
+                if is_accessible_response(response):
                     content = response.text.lower()
                     is_login_page = any(indicator in content for indicator in [
                         'wp-login',

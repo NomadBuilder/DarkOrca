@@ -33,10 +33,9 @@ ENV/
 *.swo
 *~
 
-# Reports (scan results)
-*.json
+# Reports (scan output artifacts — not src/reports Python modules)
 scan_results/
-reports/
+/reports/
 output/
 
 # Exclude report markdown files but keep documentation

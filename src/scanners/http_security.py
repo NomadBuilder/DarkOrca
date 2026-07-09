@@ -10,6 +10,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
+from ..utils.response_validation import fetch_soft_404_baseline, validate_resource_access
 
 logger = logging.getLogger(__name__)
 
@@ -202,13 +203,16 @@ class HTTPSecurityAnalyzer(BaseScanner):
         
         # Common directories that might have listing enabled
         test_dirs = ['/images/', '/files/', '/uploads/', '/assets/', '/static/', '/public/']
+        fetch_soft_404_baseline(self.session, url)
         
         for dir_path in test_dirs:
             try:
                 test_url = urljoin(url, dir_path)
                 response = self.session.get(test_url, timeout=5, allow_redirects=False)
                 
-                if response.status_code == 200:
+                if validate_resource_access(
+                    response, dir_path, session=self.session, base_url=url
+                ):
                     content = response.text.lower()
                     # Check for directory listing indicators
                     if any(indicator in content for indicator in ['index of', 'directory listing', 'parent directory', '<title>index of']):

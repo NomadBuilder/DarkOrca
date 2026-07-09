@@ -9,7 +9,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
-from ..utils.response_validation import is_accessible_response
+from ..utils.response_validation import fetch_soft_404_baseline, validate_resource_access
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ class BackupFilesScanner(BaseScanner):
             logger.debug(f"Could not verify target reachability: {e}, proceeding anyway")
         
         try:
+            fetch_soft_404_baseline(self.session, target.url)
             findings.extend(self._check_backup_files(target.url))
             findings.extend(self._check_sensitive_files(target.url))
             findings.extend(self._check_version_control(target.url))
@@ -116,7 +117,12 @@ class BackupFilesScanner(BaseScanner):
                     test_url = urljoin(base_url, f"{base_file}{ext}")
                     response = self.session.get(test_url, timeout=3, allow_redirects=False)
                     
-                    if is_accessible_response(response):
+                    if validate_resource_access(
+                        response,
+                        f"{base_file}{ext}",
+                        session=self.session,
+                        base_url=base_url,
+                    ):
                         # Check if it's actually a backup file (not just a 200 page)
                         content_type = response.headers.get('Content-Type', '').lower()
                         content_length = len(response.content)
@@ -152,7 +158,9 @@ class BackupFilesScanner(BaseScanner):
                 test_url = urljoin(base_url, path)
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)
                 
-                if is_accessible_response(response):
+                if validate_resource_access(
+                    response, path, session=self.session, base_url=base_url
+                ):
                     content_sample = response.text[:500]
                     
                     # Check for sensitive indicators
@@ -201,7 +209,9 @@ class BackupFilesScanner(BaseScanner):
                 test_url = urljoin(base_url, path)
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)
                 
-                if is_accessible_response(response):
+                if validate_resource_access(
+                    response, path, session=self.session, base_url=base_url
+                ):
                     findings.append(Finding(
                         title="Version Control Directory Exposed",
                         description=f"Version control directory/file found: {path} (HTTP 200). This may expose source code, commit history, and sensitive information.",

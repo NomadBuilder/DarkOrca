@@ -3,8 +3,11 @@
 import json
 from typing import List, Dict, Any, Optional
 
+from urllib.parse import urlparse
+
 from ..models.finding import Finding, FindingSeverity, FindingCategory
-from ..utils.response_validation import get_inaccessibility_reason, is_accessible_response
+from ..utils.response_validation import get_inaccessibility_reason, validate_resource_access, fetch_soft_404_baseline
+from ..utils.scanner_session import create_scanner_session
 from ..utils.wp_references import (
     enrich_cve_references,
     wordpress_core_references,
@@ -250,7 +253,6 @@ class WPScanParser:
     @staticmethod
     def _parse_interesting_finding(finding_data: Dict[str, Any]) -> Optional[Finding]:
         """Parse an interesting finding entry."""
-        import requests
 
         url = finding_data.get("url", "")
         finding_type = finding_data.get("type", "unknown")
@@ -276,10 +278,24 @@ class WPScanParser:
         block_reason = None
         if url:
             try:
-                response = requests.get(url, timeout=5, allow_redirects=False)
-                is_accessible = is_accessible_response(response)
+                session = create_scanner_session()
+                parsed = urlparse(url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                resource_path = parsed.path or "/"
+                baseline = fetch_soft_404_baseline(session, base_url)
+                response = session.get(url, timeout=5, allow_redirects=False)
+                is_accessible = validate_resource_access(
+                    response,
+                    resource_path,
+                    session=session,
+                    base_url=base_url,
+                )
                 if not is_accessible:
-                    block_reason = get_inaccessibility_reason(response)
+                    block_reason = get_inaccessibility_reason(
+                        response,
+                        resource_path=resource_path,
+                        baseline_content=baseline,
+                    )
             except Exception:
                 # If verification fails, avoid reporting as exposed.
                 is_accessible = False

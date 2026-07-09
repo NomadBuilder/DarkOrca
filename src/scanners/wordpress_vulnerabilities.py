@@ -10,7 +10,11 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
-from ..utils.response_validation import is_accessible_response
+from ..utils.response_validation import (
+    fetch_soft_404_baseline,
+    is_accessible_response,
+    validate_resource_access,
+)
 from ..utils.wp_references import wordpress_core_references
 
 import logging
@@ -53,6 +57,8 @@ class WordPressVulnerabilities(BaseScanner):
         # Check if this is a WordPress site first
         if not self._is_wordpress_site(target.url):
             return findings
+
+        fetch_soft_404_baseline(self.session, target.url)
         
         # Run comprehensive WordPress vulnerability tests
         findings.extend(self._test_wp_config_exposure(target.url))
@@ -125,7 +131,9 @@ class WordPressVulnerabilities(BaseScanner):
                 test_url = urljoin(url, config_file)
                 response = self.session.get(test_url, timeout=5)
 
-                if is_accessible_response(response):
+                if validate_resource_access(
+                    response, config_file, session=self.session, base_url=url
+                ):
                     content = response.text
                     if 'DB_NAME' in content or 'DB_PASSWORD' in content or 'DB_USER' in content:
                         findings.append(Finding(
@@ -248,7 +256,9 @@ class WordPressVulnerabilities(BaseScanner):
                 test_url = urljoin(url, backup_path)
                 response = self.session.get(test_url, timeout=5)
 
-                if is_accessible_response(response):
+                if validate_resource_access(
+                    response, backup_path, session=self.session, base_url=url
+                ):
                     content = response.text.lower()
                     backup_indicators = [
                         'index of /', 'directory listing', 'parent directory',
@@ -297,7 +307,9 @@ class WordPressVulnerabilities(BaseScanner):
                 test_url = urljoin(url, db_file)
                 response = self.session.get(test_url, timeout=5)
 
-                if is_accessible_response(response):
+                if validate_resource_access(
+                    response, db_file, session=self.session, base_url=url
+                ):
                     content = response.text
                     if 'CREATE TABLE' in content or 'INSERT INTO' in content or 'wp_users' in content:
                         findings.append(Finding(
@@ -331,7 +343,9 @@ class WordPressVulnerabilities(BaseScanner):
         try:
             readme_url = urljoin(url, '/readme.html')
             response = self.session.get(readme_url, timeout=5)
-            if is_accessible_response(response):
+            if validate_resource_access(
+                response, "/readme.html", session=self.session, base_url=url
+            ):
                 version_match = re.search(r'Version\s+([\d.]+)', response.text, re.IGNORECASE)
                 if version_match:
                     version = version_match.group(1)

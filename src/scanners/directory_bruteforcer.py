@@ -11,7 +11,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
-from ..utils.response_validation import is_accessible_response, is_blocked_status
+from ..utils.response_validation import fetch_soft_404_baseline, is_blocked_status, validate_resource_access
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +170,7 @@ class DirectoryBruteforcer(BaseScanner):
                     # Import session for verification
                     from ..utils.scanner_session import create_scanner_session
                     verify_session = create_scanner_session()
+                    fetch_soft_404_baseline(verify_session, target.url)
                     
                     for result in results[:20]:  # Limit to top 20 findings
                         url_path = result.get("url", "")
@@ -183,7 +184,13 @@ class DirectoryBruteforcer(BaseScanner):
                         if status in [200, 204]:
                             try:
                                 verify_response = verify_session.get(url_path, timeout=5, allow_redirects=True)
-                                if not is_accessible_response(verify_response):
+                                path = url_path.replace(target.url, "").strip("/") or url_path
+                                if not validate_resource_access(
+                                    verify_response,
+                                    f"/{path}",
+                                    session=verify_session,
+                                    base_url=target.url,
+                                ):
                                     continue
                             except Exception as e:
                                 logger.debug(f"Could not verify {url_path}: {e}")
@@ -191,7 +198,7 @@ class DirectoryBruteforcer(BaseScanner):
                             
                             # Determine severity based on what was found
                             path = url_path.replace(target.url, "").strip("/")
-                            
+
                             if any(sensitive in path.lower() for sensitive in ["wp-config", "backup", "secret", "private", ".htaccess"]):
                                 severity = FindingSeverity.HIGH
                             elif any(admin in path.lower() for admin in ["admin", "administrator", "wp-admin"]):
@@ -218,7 +225,13 @@ class DirectoryBruteforcer(BaseScanner):
                                 final_status = verify_response.status_code
                                 
                                 # Only report if redirect leads to actual content (200), not error pages
-                                if final_status == 200 and is_accessible_response(verify_response):
+                                path = url_path.replace(target.url, "").strip("/") or url_path
+                                if final_status == 200 and validate_resource_access(
+                                    verify_response,
+                                    f"/{path}",
+                                    session=verify_session,
+                                    base_url=target.url,
+                                ):
                                     path = url_path.replace(target.url, "").strip("/")
 
                                     if any(sensitive in path.lower() for sensitive in ["wp-config", "backup", "secret", "private", ".htaccess"]):

@@ -9,7 +9,7 @@ from .base import BaseScanner
 from ..models.scan import ScanTarget
 from ..models.finding import Finding, FindingSeverity, FindingCategory
 from ..models.scan_mode import ScanMode
-from ..utils.response_validation import is_accessible_response
+from ..utils.response_validation import fetch_soft_404_baseline, validate_resource_access
 
 
 class WordPressAnalyzer(BaseScanner):
@@ -466,24 +466,20 @@ class WordPressAnalyzer(BaseScanner):
         files_exposed = []
         files_protected = []
         
+        fetch_soft_404_baseline(self.session, url)
+
         for path, severity, description in sensitive_paths:
             try:
                 full_url = urljoin(url, path)
                 response = self.session.get(full_url, timeout=5)
                 files_tested.append(path)
                 
-                if is_accessible_response(response):
+                if validate_resource_access(
+                    response, path, session=self.session, base_url=url
+                ):
                     content = response.text
 
-                    # For wp-config.php, verify it's actually WordPress-related
-                    if path == '/wp-config.php':
-                        wp_keywords = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'WP_', 'wordpress', 'table_prefix']
-                        is_wp_config = any(keyword.lower() in content.lower() for keyword in wp_keywords)
-
-                        if not is_wp_config:
-                            continue
-
-                    if len(content) > 100:
+                    if len(content) > 20:
                         files_exposed.append(path)
                         findings.append(Finding(
                             title=f"File: {path}",

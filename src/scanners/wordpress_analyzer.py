@@ -40,6 +40,11 @@ class WordPressAnalyzer(BaseScanner):
     def scan(self, target: ScanTarget) -> List[Finding]:
         """Run WordPress-specific security checks."""
         findings = []
+
+        # Respect explicit platform selection — skip WP probes on non-WP sites
+        from ..models.platform import SitePlatform
+        if target.platform and target.platform != SitePlatform.WORDPRESS:
+            return findings
         
         # Always capture server and technology information (works for all sites)
         findings.extend(self._capture_server_info(target.url))

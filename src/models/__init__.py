@@ -3,6 +3,7 @@
 from .finding import Finding, FindingCategory, FindingSeverity
 from .scan import ScanResult, ScanTarget
 from .risk import RiskScore, RiskLevel
+from .platform import SitePlatform
 
 __all__ = [
     "Finding",
@@ -12,5 +13,6 @@ __all__ = [
     "ScanTarget",
     "RiskScore",
     "RiskLevel",
+    "SitePlatform",
 ]
 

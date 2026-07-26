@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Set
 
+from ..models.platform import SitePlatform, WORDPRESS_SCANNERS, SQUARESPACE_SCANNERS
+
 
 SCAN_PRESETS: Dict[str, Dict[str, Any]] = {
     "quick": {
         "label": "Quick Audit",
-        "description": "Fast baseline check (~15 min): SSL, headers, WordPress fingerprint, exposed files.",
+        "description": "Fast baseline check (~15 min): SSL, headers, platform fingerprint, exposed files.",
         "scan_mode": "defensive",
         "exhaustive": False,
         "enable_wpscan": True,
@@ -49,6 +51,7 @@ QUICK_SCANNER_ALLOWLIST: Set[str] = {
     "security_headers",
     "http_security",
     "wordpress_analyzer",
+    "squarespace_analyzer",
     "wpscan",
     "backup_files",
     "dns_security",
@@ -63,24 +66,43 @@ def get_preset(name: Optional[str]) -> Optional[Dict[str, Any]]:
     return SCAN_PRESETS.get(name.lower())
 
 
-def get_allowed_scanners_for_preset(preset: Optional[str]) -> Optional[Set[str]]:
+def get_allowed_scanners_for_preset(
+    preset: Optional[str],
+    platform: Optional[SitePlatform] = None,
+) -> Optional[Set[str]]:
     """Return allowlist for preset, or None to allow all scanners for the scan mode."""
-    if preset and preset.lower() == "quick":
-        return QUICK_SCANNER_ALLOWLIST
-    return None
+    if not preset or preset.lower() != "quick":
+        return None
+
+    allowed = set(QUICK_SCANNER_ALLOWLIST)
+    platform = platform or SitePlatform.OTHER
+
+    if platform != SitePlatform.WORDPRESS:
+        allowed -= WORDPRESS_SCANNERS
+    if platform != SitePlatform.SQUARESPACE:
+        allowed -= SQUARESPACE_SCANNERS
+
+    return allowed
 
 
 def resolve_scan_config(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge API request with preset defaults."""
+    """Merge API request with preset defaults and platform selection."""
     preset_name = (data.get("scan_preset") or data.get("preset") or "standard").lower()
     preset = get_preset(preset_name) or SCAN_PRESETS["standard"]
+    platform = SitePlatform.from_value(data.get("platform") or data.get("site_platform"))
+
+    enable_wpscan = data.get("enable_wpscan", preset["enable_wpscan"])
+    if platform != SitePlatform.WORDPRESS:
+        enable_wpscan = False
 
     return {
         "preset": preset_name,
         "preset_label": preset["label"],
+        "platform": platform.value,
+        "platform_label": platform.label,
         "scan_mode": data.get("scan_mode") or preset["scan_mode"],
         "exhaustive": data.get("exhaustive", preset["exhaustive"]),
-        "enable_wpscan": data.get("enable_wpscan", preset["enable_wpscan"]),
+        "enable_wpscan": enable_wpscan,
         "enable_nuclei": data.get("enable_nuclei", preset["enable_nuclei"]),
         "enable_nmap": data.get("enable_nmap", preset["enable_nmap"]),
         "enable_sqlmap": data.get("enable_sqlmap", preset["enable_sqlmap"]),

@@ -45,6 +45,7 @@ from .scanners.deserialization_scanner import DeserializationScanner
 from .scanners.websocket_security import WebSocketSecurityScanner
 from .scanners.auth_bypass import AuthenticationBypassScanner
 from .scoring.engine import RiskScoringEngine
+from .models.platform import SitePlatform, should_enable_scanner
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class ScanOrchestrator:
         exhaustive: bool = False,  # Exhaustive mode for thorough scanning
         progress_callback: Optional[Callable[[Dict], None]] = None,
         preset: Optional[str] = None,
+        platform: SitePlatform = SitePlatform.OTHER,
     ):
         """
         Initialize orchestrator with scanner configuration.
@@ -75,12 +77,20 @@ class ScanOrchestrator:
             wpscan_api_token: WPScan API token (optional)
             scan_mode: Scan mode (defensive or offensive)
             exhaustive: If True, use exhaustive mode for scanners that support it (slower but more thorough)
+            platform: Site platform (wordpress, squarespace, other) to select relevant scanners
         """
         self.scan_mode = scan_mode
         self.exhaustive = exhaustive
         self.preset = preset
+        if isinstance(platform, str):
+            platform = SitePlatform.from_value(platform)
+        self.platform = platform
         self.scanners: List[BaseScanner] = []
         self.progress_callback = progress_callback
+
+        # Never run WPScan on non-WordPress platforms
+        if self.platform != SitePlatform.WORDPRESS:
+            enable_wpscan = False
         
         # Warn about offensive mode
         if scan_mode == ScanMode.OFFENSIVE:
@@ -92,7 +102,7 @@ class ScanOrchestrator:
             logger.warning("Unauthorized use may be illegal and unethical.")
             logger.warning("=" * 60)
         
-        if enable_wpscan:
+        if enable_wpscan and self.platform == SitePlatform.WORDPRESS:
             try:
                 wpscan = WPScanAdapter(api_token=wpscan_api_token, enabled=True, scan_mode=scan_mode)
                 if wpscan.is_available():
@@ -125,17 +135,28 @@ class ScanOrchestrator:
             except Exception as e:
                 logger.warning(f"Failed to initialize Nmap: {e}")
         
-        # WordPress Analyzer (runs after WPScan if enabled, or independently)
-        # This provides additional WordPress-specific security checks
-        try:
-            wp_analyzer = WordPressAnalyzer(enabled=True, scan_mode=scan_mode)
-            if wp_analyzer.is_available():
-                self.scanners.append(wp_analyzer)
-                logger.info("WordPress Analyzer enabled (will run if WordPress detected)")
-            else:
-                logger.warning("WordPress Analyzer not available, skipping")
-        except Exception as e:
-            logger.warning(f"Failed to initialize WordPress Analyzer: {e}")
+        # WordPress Analyzer — only when platform is WordPress
+        if self.platform == SitePlatform.WORDPRESS:
+            try:
+                wp_analyzer = WordPressAnalyzer(enabled=True, scan_mode=scan_mode)
+                if wp_analyzer.is_available():
+                    self.scanners.append(wp_analyzer)
+                    logger.info("WordPress Analyzer enabled")
+                else:
+                    logger.warning("WordPress Analyzer not available, skipping")
+            except Exception as e:
+                logger.warning(f"Failed to initialize WordPress Analyzer: {e}")
+
+        # Squarespace Analyzer — only when platform is Squarespace
+        if self.platform == SitePlatform.SQUARESPACE:
+            try:
+                from .scanners.squarespace_analyzer import SquarespaceAnalyzer
+                sqsp_analyzer = SquarespaceAnalyzer(enabled=True, scan_mode=scan_mode)
+                if sqsp_analyzer.is_available():
+                    self.scanners.append(sqsp_analyzer)
+                    logger.info("Squarespace Analyzer enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Squarespace Analyzer: {e}")
         
         # Website information gathering (comprehensive DNS, IP, WHOIS, CDN, CMS, etc.)
         try:
@@ -254,13 +275,14 @@ class ScanOrchestrator:
                     logger.warning(f"Failed to initialize SQLMap: {e}")
             
             # WordPress offensive testing (login brute force, REST API testing)
-            try:
-                wp_offensive = WordPressOffensive(enabled=True, scan_mode=scan_mode)
-                if wp_offensive.is_available():
-                    self.scanners.append(wp_offensive)
-                    logger.info("WordPress Offensive scanner enabled (OFFENSIVE)")
-            except Exception as e:
-                logger.warning(f"Failed to initialize WordPress Offensive: {e}")
+            if self.platform == SitePlatform.WORDPRESS:
+                try:
+                    wp_offensive = WordPressOffensive(enabled=True, scan_mode=scan_mode)
+                    if wp_offensive.is_available():
+                        self.scanners.append(wp_offensive)
+                        logger.info("WordPress Offensive scanner enabled (OFFENSIVE)")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize WordPress Offensive: {e}")
             
             # XSS testing
             try:
@@ -378,13 +400,14 @@ class ScanOrchestrator:
                 logger.warning(f"Failed to initialize Path Traversal Scanner: {e}")
             
             # WordPress-Specific Vulnerabilities Scanner
-            try:
-                wp_vulns = WordPressVulnerabilities(enabled=True, scan_mode=scan_mode)
-                if wp_vulns.is_available():
-                    self.scanners.append(wp_vulns)
-                    logger.info("WordPress Vulnerabilities Scanner enabled (OFFENSIVE)")
-            except Exception as e:
-                logger.warning(f"Failed to initialize WordPress Vulnerabilities Scanner: {e}")
+            if self.platform == SitePlatform.WORDPRESS:
+                try:
+                    wp_vulns = WordPressVulnerabilities(enabled=True, scan_mode=scan_mode)
+                    if wp_vulns.is_available():
+                        self.scanners.append(wp_vulns)
+                        logger.info("WordPress Vulnerabilities Scanner enabled (OFFENSIVE)")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize WordPress Vulnerabilities Scanner: {e}")
             
             # SSRF Scanner (for all sites)
             try:
@@ -431,14 +454,23 @@ class ScanOrchestrator:
             except Exception as e:
                 logger.warning(f"Failed to initialize Template Injection Scanner: {e}")
 
+        # Drop any platform-mismatched scanners that slipped through
+        self.scanners = [
+            s for s in self.scanners if should_enable_scanner(s.name, self.platform)
+        ]
+
         if preset:
             from .utils.scan_presets import get_allowed_scanners_for_preset
-            allowed = get_allowed_scanners_for_preset(preset)
+            allowed = get_allowed_scanners_for_preset(preset, self.platform)
             if allowed is not None:
                 before = len(self.scanners)
                 self.scanners = [s for s in self.scanners if s.name in allowed]
                 logger.info(f"Preset '{preset}': using {len(self.scanners)}/{before} scanners")
         
+        logger.info(
+            f"Platform={self.platform.value}: {len(self.scanners)} scanner(s) enabled"
+        )
+
         if not self.scanners:
             raise RuntimeError("No scanners available. Please install at least one scanner (WPScan, Nuclei, or Nmap).")
     
@@ -452,11 +484,16 @@ class ScanOrchestrator:
         Returns:
             ScanResult with aggregated findings
         """
-        target = ScanTarget(url=target_url)
+        target = ScanTarget(url=target_url, platform=self.platform)
         result = ScanResult(target=target, scan_mode=self.scan_mode)
+        result.metadata["platform"] = self.platform.value
+        result.metadata["platform_label"] = self.platform.label
         
         mode_str = "OFFENSIVE" if self.scan_mode == ScanMode.OFFENSIVE else "DEFENSIVE"
-        logger.info(f"Starting {mode_str} security scan of {target.url}")
+        logger.info(
+            f"Starting {mode_str} security scan of {target.url} "
+            f"(platform={self.platform.value})"
+        )
         
         # Step 1: Run subdomain enumeration first
         subdomain_findings = []
@@ -701,7 +738,7 @@ class ScanOrchestrator:
             logger.info(f"Scanning {len(subdomain_urls)} discovered subdomain(s)...")
             for subdomain_url in subdomain_urls:
                 try:
-                    subdomain_target = ScanTarget(url=subdomain_url)
+                    subdomain_target = ScanTarget(url=subdomain_url, platform=self.platform)
                     logger.info(f"Scanning subdomain: {subdomain_url}")
                     
                     # Run quick scans on subdomains (limited scanners)
@@ -775,7 +812,7 @@ class ScanOrchestrator:
             logger.info(f"Scanning {len(subdomain_urls)} discovered subdomain(s)...")
             for subdomain_url in subdomain_urls:
                 try:
-                    subdomain_target = ScanTarget(url=subdomain_url)
+                    subdomain_target = ScanTarget(url=subdomain_url, platform=self.platform)
                     logger.info(f"Scanning subdomain: {subdomain_url}")
                     
                     # Run quick scans on subdomains (limited scanners)

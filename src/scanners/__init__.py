@@ -36,6 +36,7 @@ from .graphql_security import GraphQLSecurityScanner
 from .deserialization_scanner import DeserializationScanner
 from .websocket_security import WebSocketSecurityScanner
 from .auth_bypass import AuthenticationBypassScanner
+from .squarespace_analyzer import SquarespaceAnalyzer
 
 __all__ = [
     "BaseScanner",
@@ -44,6 +45,7 @@ __all__ = [
     "NmapAdapter",
     "SQLMapAdapter",
     "WordPressAnalyzer",
+    "SquarespaceAnalyzer",
     "DirectoryBruteforcer",
     "ParameterDiscovery",
     "ExploitIntel",

@@ -71,6 +71,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--platform",
+        choices=["wordpress", "squarespace", "other"],
+        default="other",
+        help="Site platform: wordpress, squarespace, or other (default: other)",
+    )
+    parser.add_argument(
         "--no-wpscan",
         action="store_true",
         help="Disable WPScan scanner",
@@ -180,12 +186,13 @@ Examples:
         # Initialize orchestrator
         try:
             orchestrator = ScanOrchestrator(
-                enable_wpscan=not args.no_wpscan,
+                enable_wpscan=not args.no_wpscan and args.platform == "wordpress",
                 enable_nuclei=not args.no_nuclei,
                 enable_nmap=not args.no_nmap,
                 enable_sqlmap=args.enable_sqlmap,
                 wpscan_api_token=args.wpscan_api_token,
                 scan_mode=scan_mode,
+                platform=args.platform,
             )
         except RuntimeError as e:
             logger.error(f"Failed to initialize scanners: {e}")

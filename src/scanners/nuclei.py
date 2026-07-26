@@ -42,19 +42,29 @@ class NucleiAdapter(BaseScanner):
             "-silent",
         ]
         
-        # Configure based on scan mode
+        # Configure based on scan mode and platform
+        platform_value = getattr(getattr(target, "platform", None), "value", None) or "other"
+
         if self.scan_mode == ScanMode.DEFENSIVE:
             # Defensive mode: Only passive/info templates
             args.extend([
                 "-severity", "info,low,medium",
                 "-tags", "passive,info,exposure",
             ])
-        else:
-            # Offensive mode: All severities including exploits
-            # Add WordPress-specific tags for better coverage
+        elif platform_value == "wordpress":
             args.extend([
                 "-severity", "info,low,medium,high,critical",
-                "-tags", "wordpress,wp,cms",  # WordPress-specific templates
+                "-tags", "wordpress,wp,cms",
+            ])
+        elif platform_value == "squarespace":
+            args.extend([
+                "-severity", "info,low,medium,high,critical",
+                "-tags", "cms,exposure,misconfig,http",
+            ])
+        else:
+            args.extend([
+                "-severity", "info,low,medium,high,critical",
+                "-tags", "cve,exposure,misconfig,http",
             ])
         
         # Common settings

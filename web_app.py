@@ -607,6 +607,8 @@ def start_scan():
     enable_nuclei = scan_config['enable_nuclei']
     enable_nmap = scan_config['enable_nmap']
     scan_preset_label = scan_config.get('preset_label', scan_preset)
+    platform = scan_config.get('platform', 'other')
+    platform_label = scan_config.get('platform_label', platform)
 
     if scan_config.get('requires_authorization') and not data.get('authorized'):
         return jsonify({
@@ -651,6 +653,7 @@ def start_scan():
             scan_mode=mode,
             exhaustive=exhaustive,
             preset=scan_preset if scan_mode == 'defensive' else None,
+            platform=platform,
         )
         total_scanners = len(temp_orchestrator.scanners)
         scanner_time_estimates = {
@@ -662,6 +665,7 @@ def start_scan():
             'parameter_discovery': 120,
             'exploit_intel': 30,
             'wordpress_analyzer': 5,
+            'squarespace_analyzer': 8,
         }
         estimated_total = sum(scanner_time_estimates.get(scanner.name.lower(), 30) for scanner in temp_orchestrator.scanners)
     else:
@@ -756,6 +760,7 @@ def start_scan():
                     exhaustive=exhaustive,
                     progress_callback=update_defensive_progress,
                     preset=scan_preset,
+                    platform=platform,
                 )
                 
                 active_scans[scan_id]['current_scanner'] = f'Defensive Phase: Starting...'
@@ -817,6 +822,7 @@ def start_scan():
                     scan_mode=ScanMode.OFFENSIVE,
                     exhaustive=exhaustive,
                     progress_callback=update_offensive_progress,
+                    platform=platform,
                 )
                 
                 active_scans[scan_id]['current_scanner'] = f'Offensive Phase: Starting...'
@@ -886,6 +892,7 @@ def start_scan():
                     exhaustive=exhaustive,
                     progress_callback=update_single_progress,
                     preset=scan_preset if mode == ScanMode.DEFENSIVE else None,
+                    platform=platform,
                 )
                 
                 # Update scan status with actual scanner count - thread-safe
@@ -924,10 +931,15 @@ def start_scan():
                         'url': result.target.url,
                         'domain': result.target.domain,
                         'protocol': result.target.protocol,
+                        'platform': getattr(result.target, 'platform', platform).value
+                        if hasattr(getattr(result.target, 'platform', None), 'value')
+                        else (getattr(result.target, 'platform', None) or platform),
                     },
                     'scan_mode': result.scan_mode.value if hasattr(result.scan_mode, 'value') else str(result.scan_mode),
                     'scan_preset': scan_preset,
                     'scan_preset_label': scan_preset_label,
+                    'platform': platform,
+                    'platform_label': platform_label,
                     'findings': [],
                     'risk_score': result.risk_score.to_dict() if hasattr(result.risk_score, 'to_dict') else {},
                     'scanners_run': getattr(result, 'scanners_run', []),

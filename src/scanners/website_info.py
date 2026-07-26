@@ -275,6 +275,13 @@ class WebsiteInfo(BaseScanner):
             content = response.text.lower()
             if 'wp-content' in content or 'wp-includes' in content or 'wp-admin' in content:
                 result['cms'] = 'WordPress'
+            elif any(marker in content for marker in (
+                'static.squarespace.com',
+                'squarespace-cdn',
+                'squarespace.com/universal',
+                'sqsp.net',
+            )):
+                result['cms'] = 'Squarespace'
             elif 'drupal' in content:
                 result['cms'] = 'Drupal'
             elif 'joomla' in content:

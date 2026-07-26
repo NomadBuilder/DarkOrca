@@ -107,12 +107,29 @@ class DirectoryBruteforcer(BaseScanner):
         
         # Common WordPress directories/files to check
         wordlist_items = [
-            "wp-admin", "wp-content", "wp-includes", "wp-login.php",
-            "wp-config.php", "readme.html", "license.txt", ".htaccess",
-            "xmlrpc.php", "wp-cron.php", "wp-mail.php",
             "backup", "backups", "old", "test", "admin", "administrator",
             "uploads", "files", "private", "secret", "hidden",
+            ".htaccess", ".env", ".git", "robots.txt", "sitemap.xml",
         ]
+
+        platform_value = getattr(getattr(target, "platform", None), "value", None) or "other"
+        if platform_value == "wordpress":
+            wordlist_items.extend([
+                "wp-admin", "wp-content", "wp-includes", "wp-login.php",
+                "wp-config.php", "readme.html", "license.txt",
+                "xmlrpc.php", "wp-cron.php", "wp-mail.php",
+            ])
+        elif platform_value == "squarespace":
+            wordlist_items.extend([
+                "config", "api", "account", "account/login", "password",
+                "member-area", "members", "cart", "checkout", "search",
+                "api/1/config", "api/cart/get", "api/context",
+            ])
+        else:
+            wordlist_items.extend([
+                "login", "admin", "dashboard", "api", "graphql",
+                "swagger", "actuator", ".git/config",
+            ])
         
         # Create temporary wordlist
         import tempfile

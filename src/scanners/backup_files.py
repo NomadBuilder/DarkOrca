@@ -46,7 +46,6 @@ class BackupFilesScanner(BaseScanner):
         '/.env',
         '/.env.local',
         '/config.php',
-        '/wp-config.php',
         '/application.properties',
         '/.htpasswd',
         '/.htaccess',
@@ -57,6 +56,19 @@ class BackupFilesScanner(BaseScanner):
         '/pom.xml',
         '/.dockerignore',
         '/Dockerfile',
+    ]
+
+    WORDPRESS_SENSITIVE_PATHS = [
+        '/wp-config.php',
+        '/wp-config.php.bak',
+        '/wp-config.php.old',
+        '/xmlrpc.php',
+    ]
+
+    SQUARESPACE_SENSITIVE_PATHS = [
+        '/config',
+        '/api/1/config',
+        '/api/cart/get',
     ]
     
     def __init__(self, enabled: bool = True, scan_mode: ScanMode = ScanMode.DEFENSIVE):
@@ -95,7 +107,7 @@ class BackupFilesScanner(BaseScanner):
         try:
             fetch_soft_404_baseline(self.session, target.url)
             findings.extend(self._check_backup_files(target.url))
-            findings.extend(self._check_sensitive_files(target.url))
+            findings.extend(self._check_sensitive_files(target.url, target.platform))
             findings.extend(self._check_version_control(target.url))
             
         except Exception as e:
@@ -149,11 +161,18 @@ class BackupFilesScanner(BaseScanner):
         
         return findings
     
-    def _check_sensitive_files(self, base_url: str) -> List[Finding]:
+    def _check_sensitive_files(self, base_url: str, platform=None) -> List[Finding]:
         """Check for sensitive configuration files."""
         findings = []
+
+        paths = list(self.SENSITIVE_PATHS)
+        platform_value = getattr(platform, "value", None) or str(platform or "other")
+        if platform_value == "wordpress":
+            paths = paths + self.WORDPRESS_SENSITIVE_PATHS
+        elif platform_value == "squarespace":
+            paths = paths + self.SQUARESPACE_SENSITIVE_PATHS
         
-        for path in self.SENSITIVE_PATHS:
+        for path in paths:
             try:
                 test_url = urljoin(base_url, path)
                 response = self.session.get(test_url, timeout=3, allow_redirects=False)

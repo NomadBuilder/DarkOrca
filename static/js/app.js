@@ -68,6 +68,7 @@ function setupFormHandler() {
         // Store form values IMMEDIATELY before any operations
         const targetInput = document.getElementById('targetInput');
         const scanPresetSelect = document.getElementById('scanPreset');
+        const sitePlatformSelect = document.getElementById('sitePlatform');
         const emailInput = document.getElementById('email');
         const authorizedCheckbox = document.getElementById('authorizedScan');
         
@@ -78,19 +79,20 @@ function setupFormHandler() {
         
         const target = targetInput.value.trim();
         const scanPreset = scanPresetSelect.value;
+        const platform = sitePlatformSelect ? sitePlatformSelect.value : 'other';
         const email = emailInput?.value.trim() || '';
         const authorized = authorizedCheckbox ? authorizedCheckbox.checked : false;
         
-        console.log('Form values captured:', { target, scanPreset, email, authorized });
+        console.log('Form values captured:', { target, scanPreset, platform, email, authorized });
         
         if (scanPreset === 'deep' && !authorized) {
             alert('Deep Audit requires confirmation that you have authorization to test this target.');
             return false;
         }
         
-        // All scanners configured by preset on server
+        // Scanner flags: server also gates by platform/preset
         const enableSQLMap = true;
-        const enableWPScan = true;
+        const enableWPScan = platform === 'wordpress';
         const enableNuclei = true;
         const enableNmap = true;
         
@@ -147,6 +149,7 @@ function setupFormHandler() {
                 body: JSON.stringify({
                     target,
                     scan_preset: scanPreset,
+                    platform,
                     authorized,
                     email: email,
                     enable_sqlmap: enableSQLMap,
@@ -820,7 +823,20 @@ function displayExecutiveSummary(results) {
     }
 
     section.classList.remove('hidden');
-    if (overview) overview.textContent = summary.overview || '';
+    const platformLabel = results.platform_label
+        || results.platform
+        || (results.target && results.target.platform)
+        || '';
+    const presetLabel = results.scan_preset_label || results.scan_preset || '';
+    const metaBits = [platformLabel && `Platform: ${platformLabel}`, presetLabel && `Preset: ${presetLabel}`]
+        .filter(Boolean)
+        .join(' · ');
+
+    if (overview) {
+        overview.innerHTML = metaBits
+            ? `<div class="text-xs mb-2" style="color: var(--text-soft);">${escapeHtml(metaBits)}</div>${escapeHtml(summary.overview || '')}`
+            : escapeHtml(summary.overview || '');
+    }
     if (recommendation) {
         recommendation.innerHTML = `<strong>Recommended next step:</strong> ${escapeHtml(summary.recommendation || '')}`;
     }

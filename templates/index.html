@@ -814,10 +814,24 @@
                 
                 <div>
                     <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
+                        Site Platform
+                    </label>
+                    <select id="sitePlatform" class="w-full" style="padding: 1rem 1.5rem !important;">
+                        <option value="other" selected>Other / Generic — skip CMS-specific probes</option>
+                        <option value="wordpress">WordPress — WPScan, wp-config, XML-RPC, plugins</option>
+                        <option value="squarespace">Squarespace — config login, APIs, forms, member pages</option>
+                    </select>
+                    <p id="platformDescription" class="text-xs mt-2" style="color: var(--text-soft);">
+                        Choose the platform so we only run relevant checks (e.g. no wp-config on Squarespace).
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">
                         Audit Preset
                     </label>
                     <select id="scanPreset" class="w-full" style="padding: 1rem 1.5rem !important;">
-                        <option value="quick">⚡ Quick Audit (~15 min) — SSL, headers, WordPress, exposed files</option>
+                        <option value="quick">⚡ Quick Audit (~15 min) — SSL, headers, platform checks, exposed files</option>
                         <option value="standard" selected>🛡️ Standard Audit (~45 min) — Full defensive assessment</option>
                         <option value="deep">🎯 Deep Audit (~2 hr) — Comprehensive authorized testing</option>
                     </select>

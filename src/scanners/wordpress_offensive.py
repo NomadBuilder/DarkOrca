@@ -44,6 +44,10 @@ class WordPressOffensive(BaseScanner):
             return []  # Only run in offensive mode
         
         findings = []
+
+        from ..models.platform import SitePlatform
+        if target.platform and target.platform != SitePlatform.WORDPRESS:
+            return findings
         
         # Check if this is a WordPress site first
         if not self._is_wordpress_site(target.url):

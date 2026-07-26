@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from .finding import Finding
 from .risk import RiskScore
 from .scan_mode import ScanMode
+from .platform import SitePlatform
 
 
 @dataclass
@@ -17,6 +18,7 @@ class ScanTarget:
     url: str
     domain: Optional[str] = None
     protocol: Optional[str] = None
+    platform: SitePlatform = SitePlatform.OTHER
     
     def __post_init__(self):
         """Parse URL and extract components."""
@@ -62,6 +64,8 @@ class ScanTarget:
         self.url = url
         self.protocol = parsed.scheme
         self.domain = domain
+        if isinstance(self.platform, str):
+            self.platform = SitePlatform.from_value(self.platform)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert target to dictionary."""
@@ -69,6 +73,7 @@ class ScanTarget:
             "url": self.url,
             "domain": self.domain,
             "protocol": self.protocol,
+            "platform": self.platform.value if isinstance(self.platform, SitePlatform) else self.platform,
         }
 
 
